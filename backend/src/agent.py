@@ -1,170 +1,247 @@
+"""
+Kisan Mitra - Production Voice Agent for Indian Farmers
+Refactored for Murf VoiceForBharat Challenge Day 2
+
+This module orchestrates the voice pipeline, handles latency tracking,
+silence detection, and response post-processing for optimal voice UX.
+"""
+
+import asyncio
 import logging
 
 from dotenv import load_dotenv
 from livekit import rtc
 from livekit.agents import (
-    Agent,
     AgentServer,
     AgentSession,
     JobContext,
     JobProcess,
     cli,
-    inference,
     tokenize,
     room_io,
 )
 from livekit.plugins import murf, silero, google, deepgram, noise_cancellation
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
+# Import configuration and utilities
+from config import (
+    AGENT_NAME,
+    TTS_VOICE,
+    TTS_STYLE,
+    TTS_TEXT_PACING,
+    STT_MODEL,
+    STT_LANGUAGE,
+    LLM_MODEL,
+    MIN_SENTENCE_LENGTH,
+    ENABLE_LATENCY_LOGGING,
+    SILENCE_TIMEOUT,
+    MAX_SILENCE_RETRIES,
+    GREETING_MESSAGE,
+    SILENCE_REPROMPT_1,
+    SILENCE_REPROMPT_2,
+)
+from assistant import KisanMitraAssistant
+from utils.response_processor import clean_response_for_voice
+from utils.latency_tracker import LatencyTracker
+from utils.silence_handler import ImprovedSilenceHandler
+
 logger = logging.getLogger("agent")
 
 load_dotenv(".env.local")
 
-# Kisan Mitra - AI Voice Assistant for Indian Farmers
-SYSTEM_PROMPT = """You are "Kisan Mitra", a friendly AI voice assistant for Indian farmers.
-
-Your primary language is Hindi (India). Speak naturally in simple Hindi, like an experienced agriculture advisor. Avoid complicated words and keep responses short because users are interacting by voice.
-
-You help farmers with:
-- Crop advisory (फसल सलाह)
-- Weather information (मौसम जानकारी)
-- Market (Mandi) prices (मंडी भाव)
-- Fertilizer and seed guidance (खाद और बीज)
-- Pest and disease suggestions (कीट और रोग)
-- Farming best practices (खेती के तरीके)
-
-Rules:
-- Always greet the user politely.
-- Reply mostly in Hindi (Devanagari script).
-- If the user speaks English, you may reply in simple Hindi with a little English if needed.
-- If information like crop name or location is missing, ask one question at a time.
-- Never make up weather or market prices. If real-time data is unavailable, clearly say you don't have live information.
-- Never give dangerous or harmful farming advice.
-- Keep answers under 80 words unless the user asks for more details.
-- Be encouraging and respectful.
-- Your responses should be in Hindi Devanagari script, not Roman/Latin script.
-
-Conversation Style:
-- Friendly and warm
-- Calm and patient
-- Conversational
-- Human-like
-- Helpful and supportive
-
-Example greeting:
-"नमस्ते! मैं आपका AI किसान मित्र हूँ। मैं फसल, मौसम, मंडी भाव, खाद और खेती से जुड़े सवालों में आपकी मदद कर सकता हूँ। आज मैं आपकी किस प्रकार सहायता कर सकता हूँ?"
-
-Example response:
-User: मेरी धान की फसल के पत्ते पीले हो रहे हैं।
-Assistant: क्या आप बता सकते हैं कि आपकी फसल कितने दिन पुरानी है और आप किस राज्य या जिले से हैं? इससे मैं बेहतर सलाह दे सकूँगा।"""
-
-
-class Assistant(Agent):
-    def __init__(self) -> None:
-        super().__init__(instructions=SYSTEM_PROMPT)
-
-    # To add tools, use the @function_tool decorator.
-    # Here's an example that adds a simple weather tool.
-    # You also have to add `from livekit.agents import function_tool, RunContext` to the top of this file
-    # @function_tool
-    # async def lookup_weather(self, context: RunContext, location: str):
-    #     """Use this tool to look up current weather information in the given location.
-    #
-    #     If the location is not supported by the weather service, the tool will indicate this. You must tell the user the location's weather is unavailable.
-    #
-    #     Args:
-    #         location: The location to look up weather information for (e.g. city name)
-    #     """
-    #
-    #     logger.info(f"Looking up weather for {location}")
-    #
-    #     return "sunny with a temperature of 70 degrees."
-
-
+# Initialize agent server
 server = AgentServer()
 
 
 def prewarm(proc: JobProcess):
+    """
+    Prewarm function to initialize models before session starts.
+    This improves first-response latency.
+    """
     proc.userdata["vad"] = silero.VAD.load()
+    logger.info("VAD model preloaded")
 
 
 server.setup_fnc = prewarm
 
 
-@server.rtc_session(agent_name="my-agent")
-async def my_agent(ctx: JobContext):
-    # Logging setup
-    # Add any other context you want in all log entries here
+@server.rtc_session(agent_name=AGENT_NAME)
+async def kisan_mitra_session(ctx: JobContext):
+    """
+    Main session handler for Kisan Mitra voice agent.
+    
+    Orchestrates:
+    - Voice pipeline (STT -> LLM -> TTS)
+    - Detailed latency tracking per pipeline stage
+    - Event-driven silence detection
+    - Response post-processing
+    - Session lifecycle
+    """
+    # Setup logging context
     ctx.log_context_fields = {
         "room": ctx.room.name,
+        "agent": AGENT_NAME,
     }
-
-    # Set up a voice AI pipeline using Murf Falcon, Gemini, Deepgram, and the LiveKit turn detector
+    
+    logger.info(f"Starting Kisan Mitra session for room: {ctx.room.name}")
+    
+    # Initialize latency tracker for detailed pipeline metrics
+    latency_tracker = LatencyTracker()
+    
+    # Configure voice AI pipeline
     session = AgentSession(
-        # Speech-to-text (STT) is your agent's ears, turning the user's speech into text that the LLM can understand
-        # See all available models at https://docs.livekit.io/agents/models/stt/
+        # Speech-to-Text: Converts user voice to text
         stt=deepgram.STT(
-            model="nova-3",
-            language="hi"  # Hindi language support
+            model=STT_MODEL,
+            language=STT_LANGUAGE  # Hindi language support
         ),
-        # A Large Language Model (LLM) is your agent's brain, processing user input and generating a response
-        # See all available models at https://docs.livekit.io/agents/models/llm/
+        
+        # Large Language Model: Processes and generates responses
         llm=google.LLM(
-                model="gemini-2.5-flash",
-            ),
-        # Text-to-speech (TTS) is your agent's voice, turning the LLM's text into speech that the user can hear
-        # See all available models as well as voice selections at https://docs.livekit.io/agents/models/tts/
+            model=LLM_MODEL,
+        ),
+        
+        # Text-to-Speech: Converts responses to natural voice
         tts=murf.TTS(
-                voice="hi-IN-pooja",  # Hindi (India) female voice - Pooja
-                style="Conversational",
-                tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
-                text_pacing=True
-            ),
-        # VAD and turn detection are used to determine when the user is speaking and when the agent should respond
-        # See more at https://docs.livekit.io/agents/build/turns
+            voice=TTS_VOICE,  # Anisha - Natural Hindi female voice
+            style=TTS_STYLE,
+            tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=MIN_SENTENCE_LENGTH),
+            text_pacing=TTS_TEXT_PACING
+        ),
+        
+        # Voice Activity Detection and turn management
         turn_detection=MultilingualModel(),
         vad=ctx.proc.userdata["vad"],
-        # allow the LLM to generate a response while waiting for the end of turn
-        # See more at https://docs.livekit.io/agents/build/audio/#preemptive-generation
+        
+        # Enable preemptive generation for lower latency
         preemptive_generation=True,
     )
-
-    # To use a realtime model instead of a voice pipeline, use the following session setup instead.
-    # (Note: This is for the OpenAI Realtime API. For other providers, see https://docs.livekit.io/agents/models/realtime/))
-    # 1. Install livekit-agents[openai]
-    # 2. Set OPENAI_API_KEY in .env.local
-    # 3. Add `from livekit.plugins import openai` to the top of this file
-    # 4. Use the following session setup instead of the version above
-    # session = AgentSession(
-    #     llm=openai.realtime.RealtimeModel(voice="marin")
-    # )
-
-    # # Add a virtual avatar to the session, if desired
-    # # For other providers, see https://docs.livekit.io/agents/models/avatar/
-    # avatar = hedra.AvatarSession(
-    #   avatar_id="...",  # See https://docs.livekit.io/agents/models/avatar/plugins/hedra
-    # )
-    # # Start the avatar and wait for it to join
-    # await avatar.start(session, room=ctx.room)
-
-    # Start the session, which initializes the voice pipeline and warms up the models
+    
+    # ========== EVENT-DRIVEN SILENCE HANDLER ==========
+    
+    async def handle_silence(retry_count: int):
+        """
+        Handle silence detection with configured messages.
+        
+        Args:
+            retry_count: Current retry attempt (0-indexed)
+        """
+        try:
+            if retry_count == 0:
+                # First silence - send configured reminder
+                await session.say(SILENCE_REPROMPT_1, allow_interruptions=True)
+            elif retry_count == 1:
+                # Second silence - send configured goodbye
+                await session.say(SILENCE_REPROMPT_2, allow_interruptions=False)
+                await asyncio.sleep(2)  # Wait for message to complete
+        except Exception as e:
+            logger.error(f"Failed to handle silence: {e}")
+    
+    # Initialize event-driven silence handler
+    silence_handler = ImprovedSilenceHandler(
+        timeout=SILENCE_TIMEOUT,
+        max_retries=MAX_SILENCE_RETRIES,
+        reprompt_callback=handle_silence
+    )
+    
+    # ========== LATENCY TRACKING EVENTS ==========
+    
+    @session.on("user_speech_committed")
+    def on_user_speech_end(msg):
+        """
+        Track when user finishes speaking.
+        Reset silence timer immediately (event-driven).
+        """
+        # Mark latency checkpoint
+        latency_tracker.mark_user_speech_end()
+        
+        # Reset silence handler on user activity (event-driven reset)
+        silence_handler.reset()
+        
+        if ENABLE_LATENCY_LOGGING:
+            logger.debug("User speech committed - latency tracking started")
+    
+    @session.on("agent_started_speaking")
+    def on_agent_speaking():
+        """
+        Track when agent starts speaking.
+        Calculate and log detailed pipeline metrics.
+        """
+        # Mark final latency checkpoint
+        latency_tracker.mark_first_audio_out()
+        
+        # Reset silence handler when agent speaks (event-driven reset)
+        silence_handler.reset()
+        
+        # Log detailed pipeline metrics
+        if ENABLE_LATENCY_LOGGING:
+            latency_tracker.log_metrics()
+        
+        # Reset for next turn
+        latency_tracker.reset()
+    
+    # ========== RESPONSE POST-PROCESSING ==========
+    
+    @session.on("agent_response")
+    def on_agent_response(response):
+        """
+        Post-process LLM responses to optimize for voice output.
+        Removes markdown, formatting, emojis, etc.
+        """
+        if hasattr(response, 'text'):
+            original = response.text
+            cleaned = clean_response_for_voice(original)
+            
+            if original != cleaned:
+                response.text = cleaned
+                logger.debug(f"Response cleaned for voice: {len(original)} -> {len(cleaned)} chars")
+        
+        # Mark LLM completion for latency tracking
+        latency_tracker.mark_llm_complete()
+    
+    # ========== START SESSION ==========
+    
+    logger.info("Initializing Kisan Mitra assistant...")
+    
     await session.start(
-        agent=Assistant(),
+        agent=KisanMitraAssistant(),
         room=ctx.room,
         room_options=room_io.RoomOptions(
             audio_input=room_io.AudioInputOptions(
+                # Apply noise cancellation for better audio quality
                 noise_cancellation=lambda params: (
                     noise_cancellation.BVCTelephony()
-                    if params.participant.kind
-                    == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
+                    if params.participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
                     else noise_cancellation.BVC()
                 ),
             ),
         ),
     )
-
-    # Join the room and connect to the user
+    
+    logger.info("Kisan Mitra session started successfully")
+    
+    # Connect to the room and begin interaction
     await ctx.connect()
+    
+    logger.info(f"Kisan Mitra connected to room: {ctx.room.name}")
+    
+    # ========== INITIAL GREETING ==========
+    
+    async def send_initial_greeting():
+        """Send initial greeting to user immediately after connection."""
+        await asyncio.sleep(1)  # Brief pause to ensure connection is stable
+        try:
+            await session.say(GREETING_MESSAGE, allow_interruptions=True)
+            logger.info("👋 Initial greeting sent to user")
+            
+            # Start event-driven silence monitoring after greeting
+            silence_handler.start()
+            
+        except Exception as e:
+            logger.error(f"Failed to send initial greeting: {e}")
+    
+    # Send initial greeting immediately
+    await send_initial_greeting()
 
 
 if __name__ == "__main__":
