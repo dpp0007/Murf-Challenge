@@ -35,7 +35,7 @@ SILENCE_REPROMPT_2 = (
 
 # ========================= VOICE CONFIGURATION =========================
 # Murf TTS voice settings
-TTS_VOICE = "hi-IN-anisha"  # Hindi (India) female voice - Anisha (more natural, supports multiple Indian languages)
+TTS_VOICE = "anisha"  # Hindi (India) female voice - Anisha (more natural, supports multiple Indian languages)
 TTS_STYLE = "Conversation"  # Natural conversation style with emotion
 TTS_TEXT_PACING = True
 

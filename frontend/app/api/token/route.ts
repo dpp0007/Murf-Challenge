@@ -38,8 +38,16 @@ export async function POST(req: Request) {
     } else if (AGENT_NAME) {
       // When AGENT_NAME is set, configure explicit agent dispatch so the named
       // agent worker picks up the job when a user joins the room.
+      // Optionally pass user's geolocation for weather queries
+      const agentMetadata = {
+        agentName: AGENT_NAME,
+        ...(body?.latitude && body?.longitude && {
+          latitude: body.latitude,
+          longitude: body.longitude,
+        }),
+      };
       roomConfig = RoomConfiguration.fromJson(
-        { agents: [{ agentName: AGENT_NAME }] },
+        { agents: [agentMetadata] },
         { ignoreUnknownFields: true }
       );
     }
@@ -67,10 +75,12 @@ export async function POST(req: Request) {
     });
     return NextResponse.json(data, { headers });
   } catch (error) {
-    if (error instanceof Error) {
-      console.error(error);
-      return new NextResponse(error.message, { status: 500 });
-    }
+    console.error('Token generation error:', error);
+    const message = error instanceof Error ? error.message : 'Internal Server Error';
+    return NextResponse.json(
+      { error: message },
+      { status: 500 }
+    );
   }
 }
 

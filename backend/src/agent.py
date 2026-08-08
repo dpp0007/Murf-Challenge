@@ -6,8 +6,13 @@ This module orchestrates the voice pipeline, handles latency tracking,
 silence detection, and response post-processing for optimal voice UX.
 """
 
+import sys
 import asyncio
 import logging
+from pathlib import Path
+
+# Add src directory to path to allow running: python src/agent.py dev
+sys.path.insert(0, str(Path(__file__).parent))
 
 from dotenv import load_dotenv
 from livekit import rtc
@@ -23,27 +28,51 @@ from livekit.agents import (
 from livekit.plugins import murf, silero, google, deepgram, noise_cancellation
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-# Import configuration and utilities
-from config import (
-    AGENT_NAME,
-    TTS_VOICE,
-    TTS_STYLE,
-    TTS_TEXT_PACING,
-    STT_MODEL,
-    STT_LANGUAGE,
-    LLM_MODEL,
-    MIN_SENTENCE_LENGTH,
-    ENABLE_LATENCY_LOGGING,
-    SILENCE_TIMEOUT,
-    MAX_SILENCE_RETRIES,
-    GREETING_MESSAGE,
-    SILENCE_REPROMPT_1,
-    SILENCE_REPROMPT_2,
-)
-from assistant import KisanMitraAssistant
-from utils.response_processor import clean_response_for_voice
-from utils.latency_tracker import LatencyTracker
-from utils.silence_handler import ImprovedSilenceHandler
+# Import configuration and utilities - use absolute imports for direct execution
+try:
+    # Try relative import first (when run as module)
+    from .config import (
+        AGENT_NAME,
+        TTS_VOICE,
+        TTS_STYLE,
+        TTS_TEXT_PACING,
+        STT_MODEL,
+        STT_LANGUAGE,
+        LLM_MODEL,
+        MIN_SENTENCE_LENGTH,
+        ENABLE_LATENCY_LOGGING,
+        SILENCE_TIMEOUT,
+        MAX_SILENCE_RETRIES,
+        GREETING_MESSAGE,
+        SILENCE_REPROMPT_1,
+        SILENCE_REPROMPT_2,
+    )
+    from .assistant import KisanMitraAssistant
+    from .utils.response_processor import clean_response_for_voice
+    from .utils.latency_tracker import LatencyTracker
+    from .utils.silence_handler import ImprovedSilenceHandler
+except ImportError:
+    # Fall back to absolute imports (when run directly)
+    from config import (
+        AGENT_NAME,
+        TTS_VOICE,
+        TTS_STYLE,
+        TTS_TEXT_PACING,
+        STT_MODEL,
+        STT_LANGUAGE,
+        LLM_MODEL,
+        MIN_SENTENCE_LENGTH,
+        ENABLE_LATENCY_LOGGING,
+        SILENCE_TIMEOUT,
+        MAX_SILENCE_RETRIES,
+        GREETING_MESSAGE,
+        SILENCE_REPROMPT_1,
+        SILENCE_REPROMPT_2,
+    )
+    from assistant import KisanMitraAssistant
+    from utils.response_processor import clean_response_for_voice
+    from utils.latency_tracker import LatencyTracker
+    from utils.silence_handler import ImprovedSilenceHandler
 
 logger = logging.getLogger("agent")
 

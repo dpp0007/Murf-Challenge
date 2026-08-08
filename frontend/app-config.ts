@@ -33,20 +33,21 @@ export interface AppConfig {
 }
 
 export const APP_CONFIG_DEFAULTS: AppConfig = {
-  companyName: 'Murf AI',
-  pageTitle: 'Voice Agent Starter',
-  pageDescription: 'A voice agent powered by Murf Falcon — the fastest TTS API',
+  companyName: 'Kisan Mitra',
+  pageTitle: 'Kisan Mitra - आपका AI किसान साथी',
+  pageDescription: 'Kisan Mitra - AI Voice Assistant for Farmers powered by LiveKit & Murf',
 
   supportsChatInput: true,
-  supportsVideoInput: true,
-  supportsScreenShare: true,
+  supportsVideoInput: false,
+  supportsScreenShare: false,
   isPreConnectBufferEnabled: true,
 
-  logo: '/murf-logo.svg',
-  accent: '#6366F1',
-  logoDark: '/murf-logo-dark.svg',
-  accentDark: '#818cf8',
-  startButtonText: 'Start talking',
+  logo: '/illustration/sign board.svg',
+  accent: '#F3D58A',
+  logoDark: '/illustration/sign board.svg',
+  accentDark: '#AEEFF3',
+  startButtonText: 'बात शुरू करें',
+
 
   // optional: audio visualization configuration
   // audioVisualizerType: 'bar',

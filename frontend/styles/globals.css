@@ -5,81 +5,43 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
+  --radius: 0.875rem;
+  --background: #F3FAFA;
+  --foreground: #263238;
+  --card: #FFF8E7;
+  --card-foreground: #263238;
+  --popover: rgba(255, 255, 255, 0.85);
+  --popover-foreground: #263238;
+  --primary: #2E7D32;
+  --primary-foreground: #FFFFFF;
+  --secondary: #E8F5E9;
+  --secondary-foreground: #1B5E20;
+  --muted: #E8F5E9;
+  --muted-foreground: #546E7A;
+  --accent: #F3D58A;
+  --accent-foreground: #263238;
+  --destructive: #D32F2F;
+  --border: rgba(46, 125, 50, 0.15);
+  --input: #E8F5E9;
+  --ring: #2E7D32;
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.269 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.371 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.439 0 0);
+  --farm-green: #2E7D32;
+  --farm-green-deep: #1B5E20;
+  --farm-light-green: #E8F5E9;
+  --farm-mid-green: #A5D6A7;
+  --farm-wheat: #F3D58A;
+  --farm-cream: #FFF8E7;
+  --farm-sky: #BFE3F2;
+  --farm-sky-light: #D7EEF3;
+  --farm-bg: #F3FAFA;
+  --farm-text: #263238;
 }
 
 @theme inline {
   --font-sans:
-    var(--font-public-sans), ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
-    'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+    var(--font-public-sans), var(--font-devanagari), ui-sans-serif, system-ui, sans-serif;
   --font-mono:
-    var(--font-commit-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-    'Liberation Mono', 'Courier New', monospace;
+    var(--font-commit-mono), ui-monospace, monospace;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -99,26 +61,175 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
 }
 
 @layer base {
   * {
-    @apply border-foreground/20 outline-ring/50;
+    @apply border-border outline-ring/50;
+    box-sizing: border-box;
   }
+
+  html {
+    overflow: hidden;
+    height: 100%;
+    overscroll-behavior: none;
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
-    @apply bg-background text-foreground;
+    @apply font-sans antialiased;
+    background-image:
+      linear-gradient(180deg, var(--farm-sky) 0%, #E7F3F5 40%, #F1F8EE 75%, var(--farm-cream) 100%);
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+    background-size: 100% 100%;
+    color: var(--farm-text);
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
   }
+
+  #__next,
+  [data-nextjs-scroll-focus-boundary],
+  main {
+    height: 100%;
+    width: 100%;
+  }
+}
+
+/* ============================================================
+   Farm Background Animations (slower, gentler)
+   ============================================================ */
+@keyframes cloud-float-slow {
+  0% { transform: translateX(-24vw); }
+  100% { transform: translateX(128vw); }
+}
+@keyframes cloud-float-medium {
+  0% { transform: translateX(-26vw); }
+  100% { transform: translateX(126vw); }
+}
+@keyframes cloud-float-fast {
+  0% { transform: translateX(-28vw); }
+  100% { transform: translateX(130vw); }
+}
+@keyframes spin-windmill {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-cloud-slow {
+  animation: cloud-float-slow 180s linear infinite;
+  will-change: transform;
+}
+.animate-cloud-medium {
+  animation: cloud-float-medium 240s linear infinite;
+  will-change: transform;
+}
+.animate-cloud-fast {
+  animation: cloud-float-fast 150s linear infinite;
+  will-change: transform;
+}
+.animate-windmill {
+  animation: spin-windmill 22s linear infinite;
+  transform-origin: center center;
+}
+
+/* ============================================================
+   Voice Control Animations
+   ============================================================ */
+@keyframes mic-listen-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 0 rgba(46, 125, 50, 0.25),
+      0 12px 28px -6px rgba(27, 94, 32, 0.2);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow:
+      0 0 0 14px rgba(46, 125, 50, 0.0),
+      0 12px 28px -6px rgba(27, 94, 32, 0.25);
+    transform: scale(1.03);
+  }
+}
+@keyframes mic-connect {
+  0%, 100% { transform: rotate(0deg); opacity: 0.6; }
+  50% { transform: rotate(180deg); opacity: 1; }
+}
+@keyframes mic-soft-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.animate-mic-listen {
+  animation: mic-listen-pulse 2.2s ease-in-out infinite;
+}
+.animate-mic-connect {
+  animation: mic-connect 1.1s ease-in-out infinite;
+}
+.animate-soft-in {
+  animation: mic-soft-in 350ms ease-out both;
+}
+
+/* ============================================================
+   Audio Visualizer (minimal bars)
+   ============================================================ */
+@keyframes viz-bar {
+  0%, 100% { transform: scaleY(0.35); }
+  50% { transform: scaleY(1); }
+}
+.viz-bar {
+  display: inline-block;
+  width: 3px;
+  height: 20px;
+  background: linear-gradient(to top, #2E7D32, #66BB6A);
+  border-radius: 999px;
+  margin: 0 1.5px;
+  transform-origin: center bottom;
+  animation: viz-bar 0.9s ease-in-out infinite;
+}
+
+/* ============================================================
+   Glass Conversation Panel
+   ============================================================ */
+.glass-panel {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.62) 0%,
+    rgba(255, 255, 255, 0.44) 100%
+  );
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow:
+    0 18px 40px -18px rgba(27, 94, 32, 0.18),
+    0 4px 12px -4px rgba(27, 94, 32, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.msg-user {
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+.msg-agent {
+  background: rgba(232, 245, 233, 0.7);
+  border: 1px solid rgba(165, 214, 167, 0.45);
+}
+
+/* ============================================================
+   Scrollbar (internal transcript)
+   ============================================================ */
+.thin-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+.thin-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.thin-scroll::-webkit-scrollbar-thumb {
+  background: rgba(46, 125, 50, 0.25);
+  border-radius: 999px;
+}
+.thin-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(46, 125, 50, 0.4);
 }

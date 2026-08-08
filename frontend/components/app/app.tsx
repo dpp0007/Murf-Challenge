@@ -9,11 +9,52 @@ import { AgentSessionProvider } from '@/components/agents-ui/agent-session-provi
 import { StartAudioButton } from '@/components/agents-ui/start-audio-button';
 import { ViewController } from '@/components/app/view-controller';
 import { Toaster } from '@/components/ui/sonner';
+import { GeolocationProvider, useGeolocationContext } from '@/contexts/GeolocationContext';
 import { useAgentErrors } from '@/hooks/useAgentErrors';
 import { useDebugMode } from '@/hooks/useDebug';
 import { getSandboxTokenSource } from '@/lib/utils';
 
+interface AppProps {
+  appConfig: AppConfig;
+}
+
 const IN_DEVELOPMENT = process.env.NODE_ENV !== 'production';
+
+function getSandboxTokenSourceWithGeo(appConfig: AppConfig, coordinates: { latitude: number; longitude: number } | null) {
+  return TokenSource.custom(async () => {
+    const url = new URL(process.env.NEXT_PUBLIC_CONN_DETAILS_ENDPOINT!, window.location.origin);
+    const sandboxId = appConfig.sandboxId ?? '';
+    const roomConfig = appConfig.agentName
+      ? {
+          agents: [
+            {
+              agent_name: appConfig.agentName,
+              ...(coordinates && {
+                latitude: coordinates.latitude,
+                longitude: coordinates.longitude,
+              }),
+            },
+          ],
+        }
+      : undefined;
+
+    try {
+      const res = await fetch(url.toString(), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Sandbox-Id': sandboxId,
+        },
+        body: JSON.stringify({ room_config: roomConfig }),
+      });
+      if (!res.ok) throw new Error(`Failed to get token: ${res.statusText}`);
+      return await res.json();
+    } catch (error) {
+      console.error('Failed to get connection details:', error);
+      throw error;
+    }
+  });
+}
 
 function AppSetup() {
   useDebugMode({ enabled: IN_DEVELOPMENT });
@@ -22,16 +63,43 @@ function AppSetup() {
   return null;
 }
 
-interface AppProps {
-  appConfig: AppConfig;
+export function App({ appConfig }: AppProps) {
+  return (
+    <GeolocationProvider>
+      <AppInner appConfig={appConfig} />
+    </GeolocationProvider>
+  );
 }
 
-export function App({ appConfig }: AppProps) {
+function AppInner({ appConfig }: AppProps) {
+  const { coordinates } = useGeolocationContext();
+
   const tokenSource = useMemo(() => {
-    return typeof process.env.NEXT_PUBLIC_CONN_DETAILS_ENDPOINT === 'string'
-      ? getSandboxTokenSource(appConfig)
-      : TokenSource.endpoint('/api/token');
-  }, [appConfig]);
+    if (typeof process.env.NEXT_PUBLIC_CONN_DETAILS_ENDPOINT === 'string') {
+      return getSandboxTokenSourceWithGeo(appConfig, coordinates);
+    }
+    
+    // Create a token source that includes geolocation
+    return TokenSource.custom(async () => {
+      const response = await fetch('/api/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...(coordinates && {
+            latitude: coordinates.latitude,
+            longitude: coordinates.longitude,
+          }),
+        }),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: response.statusText }));
+        throw new Error(`Token request failed: ${error.error || response.statusText}`);
+      }
+      
+      return response.json();
+    });
+  }, [appConfig, coordinates]);
 
   const session = useSession(
     tokenSource,
@@ -41,7 +109,7 @@ export function App({ appConfig }: AppProps) {
   return (
     <AgentSessionProvider session={session}>
       <AppSetup />
-      <main className="grid h-svh grid-cols-1 place-content-center">
+      <main className="relative min-h-svh w-full overflow-hidden">
         <ViewController appConfig={appConfig} />
       </main>
       <StartAudioButton label="Start Audio" />
