@@ -104,6 +104,7 @@ async def kisan_mitra_session(ctx: JobContext):
     - Detailed latency tracking per pipeline stage
     - Event-driven silence detection
     - Response post-processing
+    - Farmer memory management
     - Session lifecycle
     """
     # Setup logging context
@@ -113,6 +114,11 @@ async def kisan_mitra_session(ctx: JobContext):
     }
     
     logger.info(f"Starting Kisan Mitra session for room: {ctx.room.name}")
+    
+    # Extract stable user_id from room name or participant ID
+    # Format: voice_assistant_user_<random> from frontend token generation
+    user_id = ctx.room.name  # This is stable per caller session
+    logger.info(f"Farmer user_id: {user_id}")
     
     # Initialize latency tracker for detailed pipeline metrics
     latency_tracker = LatencyTracker()

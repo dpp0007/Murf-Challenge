@@ -14,11 +14,13 @@ try:
     from .config import ASSISTANT_NAME
     from .services.weather_service import WeatherService
     from .services.mandi_service import get_mandi_service
+    from .tools.farmer_memory import get_farmer_memory_tools
 except ImportError:
     from prompts import get_system_prompt
     from config import ASSISTANT_NAME
     from services.weather_service import WeatherService
     from services.mandi_service import get_mandi_service
+    from tools.farmer_memory import get_farmer_memory_tools
 
 logger = logging.getLogger("assistant")
 
@@ -42,6 +44,11 @@ class KisanMitraAssistant(Agent):
         
         The prompt is loaded from the prompts module,
         keeping the implementation clean and maintainable.
+        
+        Includes access to:
+        - Farmer memory tools (lookup, save)
+        - Weather service
+        - Mandi price service
         """
         system_prompt = get_system_prompt()
         super().__init__(instructions=system_prompt)
@@ -49,6 +56,13 @@ class KisanMitraAssistant(Agent):
         logger.info(f"{ASSISTANT_NAME} assistant initialized")
         self.weather_service = WeatherService()
         self.mandi_service = get_mandi_service()
+        
+        # Initialize memory tools and register them as agent methods
+        self.memory_tools = get_farmer_memory_tools()
+        
+        # Register memory tools as function tools on this agent
+        self.lookup_farmer = self.memory_tools.lookup_farmer
+        self.save_farmer_memory = self.memory_tools.save_farmer_memory
     
     @function_tool
     async def get_weather(

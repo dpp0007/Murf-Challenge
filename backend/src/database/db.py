@@ -1,0 +1,140 @@
+"""
+SQLite database initialization and connection management for Kisan Mitra.
+
+Handles:
+- Database connection lifecycle
+- Schema initialization
+- Connection pooling and safety
+"""
+
+import sqlite3
+import logging
+from pathlib import Path
+from typing import Optional
+from datetime import datetime, timezone
+
+logger = logging.getLogger("database")
+
+
+class Database:
+    """
+    Manages SQLite database connection and schema initialization.
+    
+    Safe for multiple concurrent calls.
+    Automatically creates database and tables on first run.
+    """
+    
+    def __init__(self, db_path: str = "data/kisan_mitra.db"):
+        """
+        Initialize database.
+        
+        Args:
+            db_path: Path to SQLite database file (relative to backend root)
+        """
+        self.db_path = Path(db_path)
+        self._ensure_db_directory()
+        self._initialized = False
+    
+    def _ensure_db_directory(self):
+        """Create data directory if it doesn't exist."""
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Database directory ready: {self.db_path.parent.absolute()}")
+    
+    def get_connection(self) -> sqlite3.Connection:
+        """
+        Get a new database connection.
+        
+        Returns:
+            sqlite3.Connection configured with safe defaults
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        # Enable foreign keys
+        conn.execute("PRAGMA foreign_keys = ON")
+        # Return Row objects for dict-like access
+        conn.row_factory = sqlite3.Row
+        return conn
+    
+    def initialize(self):
+        """
+        Initialize database schema.
+        
+        Safe to call multiple times - uses CREATE TABLE IF NOT EXISTS.
+        Creates all required tables and indexes.
+        """
+        if self._initialized:
+            return
+        
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # Create users table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT UNIQUE NOT NULL,
+                    name TEXT,
+                    language_preference TEXT DEFAULT 'hi',
+                    created_at TEXT NOT NULL,
+                    last_interaction TEXT NOT NULL
+                )
+            """)
+            
+            # Create farmer_profiles table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS farmer_profiles (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT UNIQUE NOT NULL,
+                    crops_grown TEXT,
+                    land_size TEXT,
+                    district TEXT,
+                    irrigation_type TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+                )
+            """)
+            
+            # Create indexes for faster lookups
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_users_user_id ON users(user_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_farmer_profiles_user_id ON farmer_profiles(user_id)
+            """)
+            
+            conn.commit()
+            conn.close()
+            
+            self._initialized = True
+            logger.info(f"Database initialized: {self.db_path}")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize database: {e}")
+            raise
+    
+    def close(self):
+        """Close any open connections (for cleanup if needed)."""
+        # SQLite doesn't require explicit cleanup, but this is here for API consistency
+        pass
+
+
+# Global database instance
+_database_instance: Optional[Database] = None
+
+
+def get_database(db_path: str = "data/kisan_mitra.db") -> Database:
+    """
+    Get or create the global database instance.
+    
+    Args:
+        db_path: Path to SQLite database file
+        
+    Returns:
+        Database instance
+    """
+    global _database_instance
+    if _database_instance is None:
+        _database_instance = Database(db_path)
+        _database_instance.initialize()
+    return _database_instance
