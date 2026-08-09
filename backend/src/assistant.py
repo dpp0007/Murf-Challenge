@@ -164,25 +164,47 @@ class KisanMitraAssistant(Agent):
                 limit=5
             )
             
-            if not prices:
+            # Check if no prices returned
+            if not prices or len(prices) == 0:
                 if language == "hi":
-                    return f"मुझे {commodity} के लिए बाज़ार की जानकारी नहीं मिल पाई। कृपया बाद में कोशिश करें।"
+                    return f"मुझे {commodity} के लिए मंडी की जानकारी अभी नहीं मिल पाई। कृपया बाद में कोशिश करें या अपने नजदीकी मंडी से संपर्क करें।"
                 else:
-                    return f"I couldn't find market data for {commodity}. Please try again later."
+                    return f"I couldn't access market data for {commodity} right now. Please try again later or contact your local mandi."
             
             # Get most recent price
             latest = prices[0]
+            price_value = latest.get('price', 0)
+            
+            # Check if price is 0 or invalid - means data is unavailable
+            if price_value == 0 or price_value is None:
+                logger.warning(f"Mandi price returned 0 or None for {commodity}")
+                if language == "hi":
+                    return (
+                        f"मुझे {commodity} का सही मंडी भाव अभी नहीं मिल पा रहा है। "
+                        f"यह हो सकता है कि इस फसल का डेटा उपलब्ध नहीं है या API काम नहीं कर रहा है। "
+                        f"कृपया अपने नजदीकी मंडी से संपर्क करके सही भाव पता करें।"
+                    )
+                else:
+                    return (
+                        f"I couldn't get accurate mandi prices for {commodity} right now. "
+                        f"The data may not be available or the API might be down. "
+                        f"Please contact your local mandi to get current prices."
+                    )
+            
+            # Valid price found - return formatted response
+            market = latest.get('market', 'Unknown')
+            unit = latest.get('unit', 'प्रति क्विंटल')
             
             if language == "hi":
                 response = (
-                    f"आज {latest['market']} मंडी में {latest['commodity']} का "
-                    f"नवीनतम उपलब्ध भाव {latest['price']} {latest['unit']} है। "
+                    f"आज {market} मंडी में {latest['commodity']} का "
+                    f"नवीनतम उपलब्ध भाव {price_value} रुपये {unit} है। "
                 )
                 return response
             else:
                 response = (
-                    f"Today in {latest['market']} market, the latest available price for {latest['commodity']} "
-                    f"is {latest['price']} {latest['unit']}. "
+                    f"Today in {market} market, the latest available price for {latest['commodity']} "
+                    f"is ₹{price_value} {unit}. "
                 )
                 return response
                 

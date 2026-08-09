@@ -1,14 +1,18 @@
-# Backend — Voice Agent with Murf Falcon TTS
+# Backend — Kisan Mitra Voice Agent
 
-The Python backend for the Voice Agent Starter. It runs a real-time voice AI pipeline using [LiveKit Agents](https://docs.livekit.io/agents), connecting Murf Falcon TTS, Deepgram STT, and Google Gemini into a single conversational agent.
+The Python backend for Kisan Mitra agriculture assistant. It runs a real-time voice AI pipeline using [LiveKit Agents](https://docs.livekit.io/agents), connecting Murf Falcon TTS, Deepgram STT, Google Gemini, and agricultural data APIs into a conversational farming assistant.
 
 ## How It Works
 
 ```
-User speaks → [Deepgram STT] → text → [Gemini LLM] → response → [Murf Falcon TTS] → audio → User hears
+User speaks → [Deepgram STT] → text → [Gemini LLM + Tools] → response → [Murf Falcon TTS] → audio → User hears
+                                           ↓
+                                    [Weather API]
+                                    [Mandi API]
+                                    [Farmer Memory DB]
 ```
 
-LiveKit handles the real-time audio transport. The agent connects to LiveKit as a participant, listens for user speech, and responds with synthesized audio.
+LiveKit handles the real-time audio transport. The agent connects to LiveKit as a participant, listens for user speech, calls appropriate tools (weather, mandi prices, memory), and responds with synthesized Hindi/English audio.
 
 ## Setup
 
@@ -35,6 +39,7 @@ Fill in your keys in `.env.local`:
 | `MURF_API_KEY` | [murf.ai/api/dashboard](https://murf.ai/api/dashboard) |
 | `DEEPGRAM_API_KEY` | [deepgram.com](https://console.deepgram.com/) |
 | `GOOGLE_API_KEY` | [aistudio.google.com](https://aistudio.google.com/apikey) |
+| `MANDI_API_KEY` | [data.gov.in](https://data.gov.in/user/register) (optional - uses demo data if not set) |
 
 For LiveKit Cloud users, you can auto-populate LiveKit credentials:
 
@@ -66,97 +71,47 @@ uv run python src/agent.py start
 
 ## Configuration
 
-All configuration lives in [`src/agent.py`](src/agent.py).
+All configuration lives in the `src/` directory:
+- `src/agent.py` - Agent entrypoint and pipeline setup
+- `src/config.py` - Centralized configuration (voice, timeouts, agent name)
+- `src/prompts/kisan_prompt.py` - System prompt and conversation flow
+- `src/assistant.py` - Assistant class with function tools
 
-### System prompt
+### System Prompt
 
-The `SYSTEM_PROMPT` constant at the top of `agent.py` controls what your agent does. Change it to build any voice-powered use case.
+The system prompt is in `src/prompts/kisan_prompt.py`. It defines:
+- Agent identity (Kisan Mitra - female agriculture assistant)
+- Language handling (Hindi/English bilingual)
+- Tool usage rules (weather, mandi prices, farmer memory)
+- Consent protocol for saving farmer information
+- Conversation flow and greeting logic
+- Safety guardrails and escalation rules
 
-#### Example prompts
-
-**Customer Support (default):**
-
-```
-You are a friendly and efficient customer support agent for a tech company. Help users with account issues, billing questions, and product troubleshooting. Be concise, empathetic, and solution-oriented. If you don't know something, say so honestly and offer to escalate.
-```
-
-**Language Tutor:**
-
-```
-You are a patient and encouraging language tutor helping the user practice conversational Spanish. Speak primarily in Spanish but switch to English to explain grammar or vocabulary when needed. Correct mistakes gently and suggest better phrasing. Keep conversations natural and fun.
-```
-
-**AI Receptionist:**
-
-```
-You are a professional receptionist for a medical clinic. Help callers schedule appointments, answer questions about office hours and services, and take messages for doctors. Be warm but efficient. Ask for the caller's name and reason for calling upfront.
-```
-
-**Interview Coach:**
-
-```
-You are an experienced interview coach. Conduct mock interviews with the user for software engineering roles. Ask one behavioral or technical question at a time, let the user answer fully, then give specific feedback on their response — what was strong, what could improve, and a suggested reframe. Keep the tone encouraging but honest.
-```
-
-**Sales Assistant:**
-
-```
-You are a knowledgeable sales assistant for an electronics store. Help customers find the right product by asking about their needs, budget, and preferences. Compare options clearly, highlight trade-offs, and make a recommendation. Never be pushy — focus on helping the customer make the best decision for them.
-```
-
-**Fitness Coach:**
-
-```
-You are an upbeat personal fitness coach. Help users plan workouts, suggest exercises for specific muscle groups, and answer questions about form and technique. Ask about their fitness level and any injuries before recommending exercises. Keep instructions clear and motivating.
-```
-
-**Storyteller / Bedtime Narrator:**
-
-```
-You are a creative storyteller who tells original bedtime stories for children aged 4–8. Ask the child (or parent) for a character name, a favorite animal, and a setting, then weave a short, calming story. Use vivid but simple language. End each story on a peaceful, sleepy note.
-```
-
-**Meeting Summarizer:**
-
-```
-You are a meeting assistant. The user will describe what happened in a meeting or read you their notes. Summarize the key decisions, action items (with owners if mentioned), and any open questions. Be concise and structured. Ask clarifying questions if something is ambiguous.
-```
-
-**Trivia Game Host:**
-
-```
-You are an enthusiastic trivia game host. Ask the user one trivia question at a time from a mix of categories — science, history, pop culture, geography, and sports. Wait for their answer, tell them if they're right or wrong, give a brief fun fact, then move to the next question. Keep score and announce it every 5 questions.
-```
-
-**Mental Health Check-in Companion:**
-
-```
-You are a gentle, non-clinical wellness companion. Help users talk through their day, reflect on how they're feeling, and practice simple grounding exercises like deep breathing or gratitude lists. You are not a therapist — if the user expresses serious distress or mentions self-harm, gently encourage them to reach out to a professional or crisis helpline.
-```
+The prompt is structured for voice conversations - no markdown, short sentences, natural speech patterns.
 
 ### Voice
 
-Set the `voice` argument in the `murf.TTS(...)` call:
+Voice is configured in `src/config.py`:
 
 ```python
-tts=murf.TTS(
-    voice="en-US-matthew",    # Change this
-    style="Conversation",
-    tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
-    text_pacing=True
-)
+VOICE_NAME = "hi-IN-anisha"  # Natural female Hindi voice
+VOICE_STYLE = "Conversation"
 ```
 
-Some voice options:
+The current voice (`hi-IN-anisha`) is specifically chosen for natural Hindi pronunciation with feminine speech patterns.
 
-| Voice ID | Description |
-|----------|-------------|
-| `en-US-matthew` | US English, male (default) |
-| `en-US-natalie` | US English, female |
-| `en-UK-ruby` | UK English, female |
-| `en-US-miles` | US English, male |
+Browse all voices: [Murf Voice Library](https://murf.ai/api/docs/voices-styles/voice-library).
 
-Browse all 150+ voices: [Murf Voice Library](https://murf.ai/api/docs/voices-styles/voice-library).
+### Function Tools
+
+Kisan Mitra has 4 function tools exposed to the LLM:
+
+1. **`lookup_farmer(user_id)`** - Check if farmer exists in database, retrieve their profile
+2. **`save_farmer_memory(...)`** - Save farmer information (only after consent)
+3. **`get_weather(latitude, longitude, language)`** - Real-time weather data from Open-Meteo
+4. **`get_mandi_prices(commodity, state, district, language)`** - Live mandi prices from Indian Government API
+
+These are defined in `src/assistant.py` as `@function_tool` decorated methods.
 
 ### STT (Speech-to-Text)
 
@@ -211,13 +166,40 @@ docker run --env-file .env.local murf-voice-agent
 ```
 backend/
 ├── src/
-│   └── agent.py          # Agent entrypoint — pipeline, prompt, config
+│   ├── agent.py                  # Agent entrypoint — pipeline setup
+│   ├── assistant.py              # KisanMitraAssistant class with function tools
+│   ├── config.py                 # Centralized configuration
+│   ├── prompts/
+│   │   ├── kisan_prompt.py       # System prompt and conversation logic
+│   │   └── __init__.py
+│   ├── services/
+│   │   ├── weather_service.py    # Weather API integration (Open-Meteo)
+│   │   ├── mandi_service.py      # Mandi prices API integration
+│   │   └── __init__.py
+│   ├── database/
+│   │   ├── db.py                 # SQLite database connection
+│   │   ├── farmer_repository.py  # Farmer CRUD operations
+│   │   └── __init__.py
+│   ├── tools/
+│   │   ├── farmer_memory.py      # Farmer memory tools (lookup, save)
+│   │   └── __init__.py
+│   ├── utils/
+│   │   ├── latency_tracker.py    # Pipeline latency measurement
+│   │   ├── response_processor.py # Text cleanup for TTS
+│   │   ├── silence_handler.py    # Inactivity monitoring
+│   │   └── __init__.py
+│   └── api/
+│       └── clear_user_data.py    # API endpoint for data deletion
+├── data/
+│   └── kisan_mitra.db            # SQLite database (auto-created)
 ├── tests/
-│   └── test_agent.py     # LLM-judged eval suite
-├── .env.example           # Environment variable template
-├── pyproject.toml         # Python dependencies (uv)
-├── Dockerfile             # Production container
-└── railway.toml           # Railway deploy config
+│   ├── test_agent.py             # Agent behavior tests
+│   └── test_farmer_memory.py    # Memory system tests (22 tests)
+├── .env.example                  # Environment variable template
+├── .env.local                    # Your keys (gitignored)
+├── pyproject.toml                # Python dependencies (uv)
+├── Dockerfile                    # Production container
+└── railway.toml                  # Railway deploy config
 ```
 
 ## Links

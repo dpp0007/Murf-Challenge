@@ -1,18 +1,35 @@
-# Voice Agent Starter — Powered by Murf Falcon
+# Kisan Mitra — AI Agriculture Assistant for Indian Farmers
 
-Build a production voice AI agent in 5 minutes. Powered by the fastest TTS on the market - swap the system prompt to build anything from customer support to language tutors.
+A production-ready voice AI agriculture assistant built on Murf Falcon TTS. Provides real-time farming guidance, weather information, and mandi (market) prices to Indian farmers in Hindi/English.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Murf Falcon](https://img.shields.io/badge/TTS-Murf%20Falcon-6366F1)](https://murf.ai/api/docs/text-to-speech/streaming) [![LiveKit](https://img.shields.io/badge/Transport-LiveKit-002cf2)](https://docs.livekit.io) [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 
+> **Built For:** Indian farmers who need real-time agricultural guidance in their native language
+>
+> **Key Features:** Hindi/English voice support • Live weather data • Real-time mandi prices • Persistent farmer memory • Natural conversational flow
+
 ---
 
-## Why Murf Falcon
+## What Makes Kisan Mitra Different
 
-- **55ms model latency** - fastest production TTS
-- **130ms time-to-first-audio** across 10+ global regions
-- **$0.01/1000 characters** - up to 10x cheaper than alternatives
-- **150+ voices** across 35+ languages
-- **99.38% pronunciation accuracy**
+### Agriculture-Focused AI
+- **Domain-specific knowledge** for Indian farming practices
+- **Live data integration** - real weather and mandi prices, not guesses
+- **Bilingual support** - seamless Hindi/English code-switching
+- **Persistent memory** - remembers farmer details across conversations
+
+### Technical Excellence
+- **55ms TTS latency** with Murf Falcon - fastest production voice
+- **Natural Hindi voice** with proper pronunciation
+- **Robust error handling** - graceful fallbacks when APIs fail
+- **Privacy-focused** - explicit consent before saving farmer data
+- **SQLite persistence** - local farmer memory without external databases
+
+### Real-World Tools
+- **Weather API** - Live weather data from Open-Meteo (temperature, humidity, rain probability)
+- **Mandi Price API** - Current market prices from Indian Government agricultural data
+- **Farmer Memory** - Stores name, crops, district, land size with user consent
+- **Smart Tool Chaining** - Automatically uses stored location for weather/price queries
 
 ---
 
@@ -64,7 +81,38 @@ cd murf-livekit-starter
 
 ### Step 2: Set up environment variables
 
-Create `.env.local` in both `backend/` and `frontend/` (copy from `.env.example` in each). You need:
+Create `.env.local` in both `backend/` and `frontend/` (copy from `.env.example` in each).
+
+**Backend `.env.local`:**
+```bash
+# LiveKit Configuration
+LIVEKIT_URL=wss://your-project.livekit.cloud
+LIVEKIT_API_KEY=your_api_key
+LIVEKIT_API_SECRET=your_api_secret
+
+# Voice & STT
+MURF_API_KEY=your_murf_api_key
+DEEPGRAM_API_KEY=your_deepgram_api_key
+
+# LLM
+GOOGLE_API_KEY=your_google_gemini_key
+
+# Optional - Mandi Prices (if not provided, uses demo data)
+MANDI_API_KEY=your_data_gov_in_api_key
+```
+
+**Frontend `.env.local`:**
+```bash
+# Must match backend LiveKit credentials
+LIVEKIT_URL=wss://your-project.livekit.cloud
+LIVEKIT_API_KEY=your_api_key
+LIVEKIT_API_SECRET=your_api_secret
+
+# Optional - for explicit agent dispatch
+AGENT_NAME=my-agent
+```
+
+> **Important:** Keep your `.env.local` files secure and never commit them to version control. They are already in `.gitignore`.
 
 | Variable | Where to get it | Required |
 |----------|-----------------|----------|
@@ -73,7 +121,10 @@ Create `.env.local` in both `backend/` and `frontend/` (copy from `.env.example`
 | `LIVEKIT_API_SECRET` | LiveKit Cloud dashboard | Yes |
 | `MURF_API_KEY` | [murf.ai/api/dashboard](https://murf.ai/api/dashboard) | Yes |
 | `DEEPGRAM_API_KEY` | [deepgram.com](https://deepgram.com) | Yes |
-| `GOOGLE_API_KEY` (or `OPENAI_API_KEY`) | Depends on LLM choice | Yes |
+| `GOOGLE_API_KEY` | [aistudio.google.com](https://aistudio.google.com/apikey) | Yes |
+| `MANDI_API_KEY` | [data.gov.in](https://data.gov.in/user/register) (Indian Government Open Data) | Optional* |
+
+> *Note: The Mandi Price API key is optional. If not provided, the agent will use fallback demo data for common crops (wheat, rice, onion). For production use with real-time market prices, register for a free API key at [data.gov.in](https://data.gov.in/user/register).
 
 ### Step 3: Install backend dependencies
 
@@ -267,6 +318,86 @@ For deeper documentation on each part, see:
 - [TTS Latency Benchmarker](https://github.com/sahilsgupta/tts-latency-benchmarker) — run your own p50/p95 tests across providers
 - [Murf Discord](https://discord.gg/FbKAy96Sz7)
 - [Murf Startup Incubator](https://murf.ai/api) — 50M free characters for startups
+
+---
+
+## Changelog & Implementation Details
+
+### Day 5: Mandi Price API Improvements
+**Changes:**
+- Enhanced error handling for mandi prices - gracefully handles 0 prices or missing data
+- Agent now explicitly tells users when price data is unavailable
+- Better fallback messages in Hindi/English
+- Code cleanup and documentation updates
+
+**Technical Details:**
+- Updated `get_mandi_prices()` in `backend/src/assistant.py` to check for zero/null prices
+- Returns user-friendly error messages instead of showing invalid data
+- Preserves existing demo data fallback for common crops
+
+### Day 4: Advanced Domain-Data Flow
+**Changes:**
+- Comprehensive farmer memory system with SQLite database
+- Persistent storage of farmer profiles (name, crops, district, land, irrigation)
+- Clear Data button in frontend UI
+- Explicit consent flow before saving any farmer information
+- Fixed silence handler to prevent premature disconnection
+- Mobile-optimized UI with better touch targets and layout
+- Frontend state management improvements
+
+**Technical Details:**
+- Database schema: `users` table + `farmer_profiles` table with foreign key
+- `FarmerRepository` class for clean CRUD operations
+- `FarmerMemoryTools` exposed as `@function_tool` for LLM access
+- Added `delete_farmer()` method for data clearing
+- Frontend `userIdGenerator` creates persistent localStorage-based user IDs
+- Clear data API endpoint: `frontend/app/api/clear-data/route.ts`
+- 22 comprehensive pytest tests for memory operations
+
+### Day 3: Production Refactoring
+**Changes:**
+- Externalized system prompt to dedicated module (`backend/src/prompts/kisan_prompt.py`)
+- Created centralized config (`backend/src/config.py`)
+- Built clean `KisanMitraAssistant` class (`backend/src/assistant.py`)
+- Added response post-processor to remove markdown/lists/emojis for natural voice output
+- Structured project for scalability and maintainability
+
+**Technical Details:**
+- Prompt module exports `get_system_prompt()`, `get_greeting()`, `get_silence_reprompt()`
+- Config module centralizes all constants (agent name, voice settings, timeouts)
+- Response processor uses regex to clean text for TTS
+- Modular architecture allows easy testing and updates
+
+### Day 2: Agent Configuration & Voice
+**Changes:**
+- Comprehensive Kisan Mitra system prompt in Hindi/English
+- Voice changed to `hi-IN-anisha` (natural female Hindi voice)
+- Implemented inactivity monitoring (20s warning, 40s goodbye)
+- Agent greets first automatically after connection
+- Latency tracking for STT, LLM, TTS, and total response time
+- Event-driven silence handler (no more polling)
+
+**Technical Details:**
+- `LatencyTracker` class measures each pipeline stage separately
+- `ImprovedSilenceHandler` uses `agent_stopped_speaking` event
+- Monitors silence only after agent speech, stops when user speaks
+- Feminine pronouns and natural Hindi speech patterns in prompt
+
+### Day 1: Live Data Integration
+**Changes:**
+- Weather API integration (Open-Meteo) for real-time data
+- Mandi Prices API integration (Indian Government agricultural data)
+- Function tools exposed to Gemini LLM
+- Frontend Geolocation context for automatic location detection
+- Tools return real-time verified data, never fabricate information
+
+**Technical Details:**
+- `WeatherService` class in `backend/src/services/weather_service.py`
+- `MandiService` class in `backend/src/services/mandi_service.py`
+- Both exposed as `@function_tool` methods in assistant
+- Timeout handling (8-10s) with graceful fallbacks
+- Demo data fallback for common crops when API unavailable
+- System prompt updated with strict no-hallucination rules
 
 ---
 
