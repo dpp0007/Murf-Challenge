@@ -16,6 +16,7 @@ import { KisanHeader } from './KisanHeader';
 import { ConversationPanel } from './ConversationPanel';
 import { MicrophoneError } from './MicrophoneError';
 import { KisanVoiceCard } from './KisanVoiceCard';
+import { getPersistentUserId } from '@/lib/userIdGenerator';
 
 export type KisanVoiceState =
   | 'ready'
@@ -142,27 +143,64 @@ export function KisanMainView() {
 
   const [hasStartedOnce, setHasStartedOnce] = useState(false);
   const [micError, setMicError] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
 
   const isConnected = session.isConnected;
   const isMuted = localParticipant?.isMicrophoneEnabled === false;
   const canUseButton = typeof session.start === 'function' && typeof session.end === 'function';
 
-  // Derive Kisan voice state from LiveKit session
+  // Set hasStartedOnce only when actually connected
+  useEffect(() => {
+    if (isConnected) {
+      setHasStartedOnce(true);
+      // Clear connecting state once we're truly connected and agent is ready
+      if (agentState && agentState !== 'initializing') {
+        setIsConnecting(false);
+      }
+    } else {
+      setIsConnecting(false);
+    }
+  }, [isConnected, agentState]);
+
+  // Derive Kisan voice state from LiveKit session - SIMPLIFIED AND FIXED
   let voiceState: KisanVoiceState = 'ready';
+  
   if (micError) {
+    // Error state takes highest priority
     voiceState = 'error';
-  } else if (!isConnected) {
-    voiceState = hasStartedOnce ? 'ended' : 'ready';
-  } else if (agentState === 'speaking') {
-    voiceState = 'speaking';
-  } else if (agentState === 'listening' || agentState === 'thinking') {
-    voiceState = 'listening';
-  } else if (agentState === 'connecting' || agentState === 'initializing') {
+  } else if (isConnecting) {
+    // User clicked start, we're connecting
     voiceState = 'connecting';
+  } else if (!isConnected) {
+    // Not connected: either ready to start or call ended
+    voiceState = hasStartedOnce ? 'ended' : 'ready';
   } else {
-    // When connected and agent is in another state, it's typically listening / waiting for user.
-    voiceState = 'listening';
+    // Connected - determine state based on agent activity
+    if (!agentState || agentState === 'initializing') {
+      // Agent is connecting/initializing
+      voiceState = 'connecting';
+    } else if (agentState === 'speaking') {
+      // Agent is speaking
+      voiceState = 'speaking';
+    } else {
+      // Any other state (listening, thinking, idle) = listening
+      voiceState = 'listening';
+    }
   }
+  
+  // Debug logging (only in development)
+  React.useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[KisanMainView] State:', { 
+        voiceState, 
+        isConnected,
+        isConnecting,
+        agentState, 
+        hasStartedOnce,
+        micError 
+      });
+    }
+  }, [voiceState, isConnected, isConnecting, agentState, hasStartedOnce, micError]);
 
   useEffect(() => {
     if (agentState === 'failed') setMicError(true);
@@ -170,11 +208,13 @@ export function KisanMainView() {
 
   const handleStartCall = async () => {
     setMicError(false);
-    setHasStartedOnce(true);
+    setIsConnecting(true); // Set connecting state immediately
+    // Don't set hasStartedOnce here - let the useEffect handle it when connected
     try {
       if (session.start) await session.start();
     } catch (err) {
       console.error('Session start error:', err);
+      setIsConnecting(false); // Clear connecting state on error
       const errStr = String(err).toLowerCase();
       if (errStr.includes('permission') || errStr.includes('notallowed')) {
         setMicError(true);

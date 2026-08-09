@@ -49,8 +49,9 @@ class ImprovedSilenceHandler:
     
     def start(self):
         """Start monitoring for silence."""
+        # Stop any existing monitoring first
         if self.is_active:
-            return
+            self.stop()
         
         self.is_active = True
         self.last_activity_time = time.perf_counter()

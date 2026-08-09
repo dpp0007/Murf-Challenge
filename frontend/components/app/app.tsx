@@ -12,6 +12,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { GeolocationProvider, useGeolocationContext } from '@/contexts/GeolocationContext';
 import { useAgentErrors } from '@/hooks/useAgentErrors';
 import { useDebugMode } from '@/hooks/useDebug';
+import { getPersistentUserId } from '@/lib/userIdGenerator';
 import { getSandboxTokenSource } from '@/lib/utils';
 
 interface AppProps {
@@ -79,12 +80,15 @@ function AppInner({ appConfig }: AppProps) {
       return getSandboxTokenSourceWithGeo(appConfig, coordinates);
     }
     
-    // Create a token source that includes geolocation
+    // Create a token source that includes geolocation and persistent user ID
     return TokenSource.custom(async () => {
+      const userId = getPersistentUserId();
+      console.log('[Frontend] Using persistent userId:', userId);
       const response = await fetch('/api/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          userId,  // Send persistent user ID to backend
           ...(coordinates && {
             latitude: coordinates.latitude,
             longitude: coordinates.longitude,

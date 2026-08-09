@@ -95,16 +95,17 @@ class FarmerMemoryTools:
         }
         """
         try:
+            logger.info(f"[FarmerMemoryTools] Looking up farmer with user_id: {user_id}")
             profile = self.repository.lookup_farmer(user_id)
             
             if not profile:
-                logger.info(f"Farmer {user_id} not found - new caller")
+                logger.info(f"[FarmerMemoryTools] Farmer {user_id} not found - new caller")
                 return str({
                     "status": "not_found",
                     "message": f"No farmer found with ID {user_id}"
                 })
             
-            logger.info(f"Found farmer {user_id}: {profile.name or 'unnamed'}")
+            logger.info(f"[FarmerMemoryTools] Found farmer {user_id}: name={profile.name}, crops={profile.crops_grown}, district={profile.district}")
             return str({
                 "status": "found",
                 "name": profile.name,

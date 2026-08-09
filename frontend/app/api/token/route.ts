@@ -53,9 +53,16 @@ export async function POST(req: Request) {
     }
       
     // Generate participant token
+    // Use a stable, persistent user ID that doesn't change between sessions
+    // This is sent from the frontend where it's stored in localStorage
+    const stableUserId = body?.userId || `voice_assistant_user_${Math.floor(Math.random() * 10_000)}`;
     const participantName = 'user';
-    const participantIdentity = `voice_assistant_user_${Math.floor(Math.random() * 10_000)}`;
-    const roomName = `voice_assistant_room_${Math.floor(Math.random() * 10_000)}`;
+    const participantIdentity = stableUserId;
+    const roomName = stableUserId;  // Use same ID as room so backend can track farmer memory
+    
+    // Debug logging
+    console.log('[Token API] Received userId:', body?.userId);
+    console.log('[Token API] Using roomName:', roomName);
 
     const participantToken = await createParticipantToken(
       { identity: participantIdentity, name: participantName },

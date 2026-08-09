@@ -51,6 +51,7 @@ try:
     from .utils.response_processor import clean_response_for_voice
     from .utils.latency_tracker import LatencyTracker
     from .utils.silence_handler import ImprovedSilenceHandler
+    from .database.db import get_database  # Initialize database on startup
 except ImportError:
     # Fall back to absolute imports (when run directly)
     from config import (
@@ -73,6 +74,7 @@ except ImportError:
     from utils.response_processor import clean_response_for_voice
     from utils.latency_tracker import LatencyTracker
     from utils.silence_handler import ImprovedSilenceHandler
+    from database.db import get_database  # Initialize database on startup
 
 logger = logging.getLogger("agent")
 
@@ -85,10 +87,15 @@ server = AgentServer()
 def prewarm(proc: JobProcess):
     """
     Prewarm function to initialize models before session starts.
-    This improves first-response latency.
+    This improves first-response latency and ensures database is ready.
     """
+    # Initialize database before anything else
+    db = get_database()
+    logger.info("✓ Database initialized during prewarm")
+    
+    # Load VAD model
     proc.userdata["vad"] = silero.VAD.load()
-    logger.info("VAD model preloaded")
+    logger.info("✓ VAD model preloaded")
 
 
 server.setup_fnc = prewarm
@@ -190,8 +197,9 @@ async def kisan_mitra_session(ctx: JobContext):
         # Mark latency checkpoint
         latency_tracker.mark_user_speech_end()
         
-        # Reset silence handler on user activity (event-driven reset)
-        silence_handler.reset()
+        # Stop silence monitoring when user speaks
+        silence_handler.stop()
+        logger.debug("👤 User speaking - silence monitoring stopped")
         
         if ENABLE_LATENCY_LOGGING:
             logger.debug("User speech committed - latency tracking started")
@@ -205,12 +213,23 @@ async def kisan_mitra_session(ctx: JobContext):
         # Mark final latency checkpoint
         latency_tracker.mark_first_audio_out()
         
-        # Reset silence handler when agent speaks (event-driven reset)
-        silence_handler.reset()
+        # Stop silence monitoring while agent speaks
+        silence_handler.stop()
+        logger.debug("🔇 Agent speaking - silence monitoring stopped")
         
         # Log detailed pipeline metrics
         if ENABLE_LATENCY_LOGGING:
             latency_tracker.log_metrics()
+    
+    @session.on("agent_stopped_speaking")
+    def on_agent_stopped_speaking():
+        """
+        Called when agent finishes speaking.
+        Start silence monitoring to detect if user doesn't respond.
+        """
+        # Start monitoring for silence after agent finishes speaking
+        silence_handler.start()
+        logger.info("🔊 Agent stopped speaking - silence monitoring started")
         
         # Reset for next turn
         latency_tracker.reset()
@@ -239,7 +258,7 @@ async def kisan_mitra_session(ctx: JobContext):
     logger.info("Initializing Kisan Mitra assistant...")
     
     await session.start(
-        agent=KisanMitraAssistant(),
+        agent=KisanMitraAssistant(room_name=ctx.room.name),
         room=ctx.room,
         room_options=room_io.RoomOptions(
             audio_input=room_io.AudioInputOptions(
@@ -260,23 +279,11 @@ async def kisan_mitra_session(ctx: JobContext):
     
     logger.info(f"Kisan Mitra connected to room: {ctx.room.name}")
     
-    # ========== INITIAL GREETING ==========
+    # ========== SILENCE MONITORING ==========
+    # Note: Silence handler will be started automatically after agent's first speech
+    # via the on_agent_stopped_speaking event handler
     
-    async def send_initial_greeting():
-        """Send initial greeting to user immediately after connection."""
-        await asyncio.sleep(1)  # Brief pause to ensure connection is stable
-        try:
-            await session.say(GREETING_MESSAGE, allow_interruptions=True)
-            logger.info("👋 Initial greeting sent to user")
-            
-            # Start event-driven silence monitoring after greeting
-            silence_handler.start()
-            
-        except Exception as e:
-            logger.error(f"Failed to send initial greeting: {e}")
-    
-    # Send initial greeting immediately
-    await send_initial_greeting()
+    logger.info("Session ready - waiting for user to speak first")
 
 
 if __name__ == "__main__":
