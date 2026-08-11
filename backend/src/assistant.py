@@ -54,18 +54,39 @@ class KisanMitraAssistant(Agent):
             room_name: Optional room name to use as user_id for farmer memory
         """
         system_prompt = get_system_prompt()
+        
+        # For outbound weather alert calls, add a special instruction at the beginning
+        if room_name and room_name.startswith("outbound-weather-alert-"):
+            logger.info(f"[Assistant] Detected outbound weather alert call: {room_name}")
+            system_prompt = (
+                "🌦️ OUTBOUND WEATHER ALERT CALL MODE 🌦️\n\n"
+                "This is an automated outbound weather alert call.\n"
+                "The weather alert message has already been spoken by the agent.\n"
+                "Your job is to:\n"
+                "1. Wait for the user's response\n"
+                "2. Answer any follow-up questions about the weather\n"
+                "3. Handle opt-out requests if the user says they don't want future calls\n"
+                "4. Keep the conversation short and natural\n\n"
+                "DO NOT call lookup_farmer() - the personalization is already done.\n"
+                "DO NOT generate a new greeting - just wait for user input.\n\n"
+                "After this instruction, here is the full system prompt:\n\n"
+            ) + system_prompt
+        
         super().__init__(instructions=system_prompt)
         
         logger.info(f"{ASSISTANT_NAME} assistant initialized")
         self.weather_service = WeatherService()
         self.mandi_service = get_mandi_service()
         self.room_name = room_name  # Store for use in lookup_farmer
+        self.is_outbound_call = room_name and room_name.startswith("outbound-weather-alert-")
         
         # Initialize memory tools
         self.memory_tools = get_farmer_memory_tools()
         
         if room_name:
             logger.info(f"[Assistant] Room name set to: {room_name}")
+            if self.is_outbound_call:
+                logger.info(f"[Assistant] This is an OUTBOUND weather alert call")
     
     @function_tool
     async def get_weather(
@@ -268,6 +289,7 @@ class KisanMitraAssistant(Agent):
         ctx: RunContext,
         name: Optional[str] = None,
         language_preference: Optional[str] = None,
+        outbound_calls_enabled: Optional[bool] = None,
         crops_grown: Optional[str] = None,
         land_size: Optional[str] = None,
         district: Optional[str] = None,
@@ -279,9 +301,13 @@ class KisanMitraAssistant(Agent):
         IMPORTANT: Use this ONLY after explicit user consent.
         Never save information without asking permission first.
         
+        Special case: For outbound_calls_enabled=False (opt-out),
+        you can save immediately when user requests it - no consent needed.
+        
         Args:
             name: Farmer's name
             language_preference: Preferred language (hi/en)
+            outbound_calls_enabled: Whether to allow outbound calls (True/False)
             crops_grown: Crops the farmer grows
             land_size: Size of land/farm
             district: District or region
@@ -306,6 +332,7 @@ class KisanMitraAssistant(Agent):
                 user_id=user_id,
                 name=name,
                 language_preference=language_preference,
+                outbound_calls_enabled=outbound_calls_enabled,
                 crops_grown=crops_grown,
                 land_size=land_size,
                 district=district,

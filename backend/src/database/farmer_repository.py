@@ -22,6 +22,7 @@ class FarmerProfile:
         user_id: str,
         name: Optional[str] = None,
         language_preference: str = "hi",
+        outbound_calls_enabled: bool = True,
         crops_grown: Optional[str] = None,
         land_size: Optional[str] = None,
         district: Optional[str] = None,
@@ -31,6 +32,7 @@ class FarmerProfile:
         self.user_id = user_id
         self.name = name
         self.language_preference = language_preference
+        self.outbound_calls_enabled = outbound_calls_enabled
         self.crops_grown = crops_grown
         self.land_size = land_size
         self.district = district
@@ -43,6 +45,7 @@ class FarmerProfile:
             "user_id": self.user_id,
             "name": self.name,
             "language_preference": self.language_preference,
+            "outbound_calls_enabled": self.outbound_calls_enabled,
             "crops_grown": self.crops_grown,
             "land_size": self.land_size,
             "district": self.district,
@@ -100,6 +103,7 @@ class FarmerRepository:
                 user_id=user_id,
                 name=user_row["name"],
                 language_preference=user_row["language_preference"],
+                outbound_calls_enabled=bool(user_row["outbound_calls_enabled"] if "outbound_calls_enabled" in user_row.keys() else 1),
                 last_interaction=user_row["last_interaction"],
             )
             
@@ -166,6 +170,7 @@ class FarmerRepository:
         user_id: str,
         name: Optional[str] = None,
         language_preference: Optional[str] = None,
+        outbound_calls_enabled: Optional[bool] = None,
         crops_grown: Optional[str] = None,
         land_size: Optional[str] = None,
         district: Optional[str] = None,
@@ -182,6 +187,7 @@ class FarmerRepository:
             user_id: Unique identifier for the farmer
             name: Farmer's name
             language_preference: Preferred language
+            outbound_calls_enabled: Whether to allow outbound calls
             crops_grown: Crops the farmer grows
             land_size: Size of land
             district: District/region
@@ -206,7 +212,7 @@ class FarmerRepository:
             timestamp = self._get_utc_timestamp()
             
             # Update users table
-            if name is not None or language_preference is not None:
+            if any([name is not None, language_preference is not None, outbound_calls_enabled is not None]):
                 updates = []
                 values = []
                 
@@ -217,6 +223,10 @@ class FarmerRepository:
                 if language_preference is not None:
                     updates.append("language_preference = ?")
                     values.append(language_preference)
+                
+                if outbound_calls_enabled is not None:
+                    updates.append("outbound_calls_enabled = ?")
+                    values.append(1 if outbound_calls_enabled else 0)
                 
                 updates.append("last_interaction = ?")
                 values.append(timestamp)
@@ -270,6 +280,45 @@ class FarmerRepository:
         except Exception as e:
             logger.error(f"Error saving farmer memory {user_id}: {e}")
             return False
+    
+    def disable_outbound_calls(self, user_id: str) -> bool:
+        """
+        Disable outbound calls for a farmer (opt-out).
+        
+        Args:
+            user_id: Unique identifier for the farmer
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        return self.save_farmer_memory(user_id, outbound_calls_enabled=False)
+    
+    def enable_outbound_calls(self, user_id: str) -> bool:
+        """
+        Enable outbound calls for a farmer (opt-in).
+        
+        Args:
+            user_id: Unique identifier for the farmer
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        return self.save_farmer_memory(user_id, outbound_calls_enabled=True)
+    
+    def can_receive_outbound_calls(self, user_id: str) -> bool:
+        """
+        Check if farmer can receive outbound calls.
+        
+        Args:
+            user_id: Unique identifier for the farmer
+            
+        Returns:
+            True if calls are enabled, False if opted out or farmer not found
+        """
+        profile = self.lookup_farmer(user_id)
+        if not profile:
+            return True  # Default to enabled for new farmers
+        return profile.outbound_calls_enabled
 
 
 # Global repository instance

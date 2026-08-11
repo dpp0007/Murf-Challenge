@@ -1,12 +1,19 @@
 """
 Response post-processing utilities for voice optimization.
 Ensures all LLM responses are clean and suitable for TTS output.
+Includes Hindi speech normalization for natural pronunciation.
 """
 
 import re
 import logging
 
 logger = logging.getLogger("response_processor")
+
+# Import Hindi speech normalization
+try:
+    from .hindi_speech import optimize_for_murf_tts, is_hindi_text
+except ImportError:
+    from hindi_speech import optimize_for_murf_tts, is_hindi_text
 
 
 def clean_response_for_voice(text: str) -> str:
@@ -21,6 +28,8 @@ def clean_response_for_voice(text: str) -> str:
     - Special brackets and formatting
     - Code blocks
     - JSON structures
+    
+    For Hindi text, also applies speech normalization for natural pronunciation.
     
     Args:
         text: Raw response from LLM
@@ -77,6 +86,11 @@ def clean_response_for_voice(text: str) -> str:
     
     # Clean up whitespace
     text = text.strip()
+    
+    # Apply Hindi speech normalization for natural pronunciation
+    if is_hindi_text(text):
+        text = optimize_for_murf_tts(text)
+        logger.debug("Applied Hindi speech normalization")
     
     # Log if significant cleaning occurred
     if len(original_text) - len(text) > 20:

@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  asterisk:
+    image: asterisk:20-latest
+    container_name: kisan-mitra-asterisk
+    ports:
+      - "5060:5060/udp"    # SIP (UDP)
+      - "5060:5060/tcp"    # SIP (TCP)
+      - "5061:5061/tcp"    # SIPS (TLS)
+      - "5160:5160/tcp"    # Alternative SIP port
+      - "10000-10200:10000-10200/udp"  # RTP audio stream port range
+    environment:
+      - TZ=UTC
+    volumes:
+      - ./asterisk_config/extensions.conf:/etc/asterisk/extensions.conf:ro
+      - ./asterisk_config/sip.conf:/etc/asterisk/sip.conf:ro
+      - ./asterisk_config/rtp.conf:/etc/asterisk/rtp.conf:ro
+      - ./asterisk_config/logger.conf:/etc/asterisk/logger.conf:ro
+      - asterisk_logs:/var/log/asterisk
+      - asterisk_data:/var/lib/asterisk
+    networks:
+      - kisan-mitra
+    healthcheck:
+      test: ["CMD", "asterisk", "-rx", "core show version"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+networks:
+  kisan-mitra:
+    driver: bridge
+
+volumes:
+  asterisk_logs:
+    driver: local
+  asterisk_data:
+    driver: local

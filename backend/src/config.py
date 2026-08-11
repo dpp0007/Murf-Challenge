@@ -71,3 +71,11 @@ ENABLE_LATENCY_LOGGING = True
 # ========================= PROMPT CONFIGURATION =========================
 # Path to system prompt module
 PROMPT_MODULE = "prompts.kisan_prompt"
+
+# ========================= OUTBOUND CALLING (via LiveKit SIP) =========================
+# Feature toggle
+OUTBOUND_CALL_ENABLED = True
+
+# Call configuration
+WEATHER_ALERT_CALL_TIMEOUT = 60  # seconds
+WEATHER_ALERT_DEMO_DISTRICT = "Varanasi"

@@ -323,6 +323,77 @@ For deeper documentation on each part, see:
 
 ## Changelog & Implementation Details
 
+### Day 6: Outbound Weather Alerts & Production Fixes
+**Changes:**
+- ✅ Outbound weather alert calling system via SIP (LiveKit SIP Trunk → Linphone)
+- ✅ Hindi speech normalization for natural Murf TTS pronunciation
+- ✅ Farmer name personalization in outbound calls (database lookup)
+- ✅ Do-not-call (opt-out) system with explicit opt-out handling
+- ✅ Fixed late-join issue by separating greeting from weather content
+- ✅ SQLite bug fix for Row object .get() method compatibility
+- ✅ Frontend userId propagation through API chain for personalization
+
+**Features Implemented:**
+1. **Outbound Weather Alerts**
+   - Calls triggered from weather alert button in UI
+   - Message includes personalized greeting with farmer's actual name
+   - Natural Hindi pronunciation: "70%" → "सत्तर प्रतिशत", "32°C" → "बत्तीस डिग्री"
+   - Opt-out instructions in every call: "कॉल बंद कर दो"
+
+2. **Hindi Speech Optimization**
+   - `backend/src/utils/hindi_speech.py` module with comprehensive normalization
+   - Converts numbers, temperatures, percentages to natural Hindi words
+   - Weather condition mapping (English API responses → Hindi)
+   - Removes technical markers for clean speech
+
+3. **Farmer Personalization**
+   - System looks up farmer by userId from database
+   - Extracts name and language preference
+   - Greeting: "नमस्ते {farmer_name} जी! किसान मित्र बोल रहा हूँ।"
+   - Falls back to generic "नमस्ते!" if lookup fails
+
+4. **Opt-Out System**
+   - `outbound_calls_enabled` field in SQLite users table
+   - `can_receive_outbound_calls()` check before placing calls
+   - Opt-out detection in agent prompt (recognizes "कॉल बंद कर दो")
+   - `save_farmer_memory(outbound_calls_enabled=False)` records preference
+
+5. **Late-Join Fix**
+   - Greeting spoken first (14 chars, ~400ms)
+   - 1-second pause for call stabilization
+   - Weather content spoken next
+   - Users joining late still hear the full message
+
+**Technical Details:**
+- New files:
+  - `backend/src/utils/hindi_speech.py` — Speech normalization
+  - `backend/src/services/outbound_weather_service.py` — SIP call orchestration
+  - `backend/src/api/http_server.py` — FastAPI HTTP endpoints
+  - `backend/src/api/weather_alert_route.py` — Weather alert route handler
+  - `frontend/components/kisan/WeatherAlertButton.tsx` — UI button component
+  - `frontend/app/api/weather-alert/route.ts` — API bridge
+
+- Modified files:
+  - `backend/src/database/db.py` — Added `outbound_calls_enabled` column + migration
+  - `backend/src/database/farmer_repository.py` — Fixed Row.get() bug, added opt-out methods
+  - `backend/src/services/outbound_weather_service.py` — Full weather alert generation
+  - `backend/src/agent.py` — Greeting separation, outbound call detection
+  - `backend/src/assistant.py` — Outbound call mode detection
+  - `backend/src/prompts/kisan_prompt.py` — Opt-out handling, outbound call instructions
+  - `backend/src/tools/farmer_memory.py` — Pass through outbound_calls_enabled parameter
+
+- Bug Fixes:
+  - Fixed sqlite3.Row compatibility (replaced .get() with direct access + "in" check)
+  - Fixed missing userId propagation through frontend → API → backend chain
+  - Fixed speech normalization removing greeting (now detected and preserved)
+  - Fixed late-join issue by splitting greeting/weather into separate TTS calls
+
+**Testing:**
+- Manual end-to-end: Make outbound call → Hear personalized greeting → Say "कॉल बंद कर दो" → Verify opt-out recorded
+- Verified message generation includes greeting with farmer name
+- Verified speech normalization preserves greeting and converts numbers correctly
+- Verified late-join scenario (joining mid-call still hears weather content)
+
 ### Day 5: Mandi Price API Improvements
 **Changes:**
 - Enhanced error handling for mandi prices - gracefully handles 0 prices or missing data

@@ -91,11 +91,11 @@ def prewarm(proc: JobProcess):
     """
     # Initialize database before anything else
     db = get_database()
-    logger.info("✓ Database initialized during prewarm")
+    logger.info("[OK] Database initialized during prewarm")
     
     # Load VAD model
     proc.userdata["vad"] = silero.VAD.load()
-    logger.info("✓ VAD model preloaded")
+    logger.info("[OK] VAD model preloaded")
 
 
 server.setup_fnc = prewarm
@@ -199,7 +199,7 @@ async def kisan_mitra_session(ctx: JobContext):
         
         # Stop silence monitoring when user speaks
         silence_handler.stop()
-        logger.debug("👤 User speaking - silence monitoring stopped")
+        logger.debug("[User] User speaking - silence monitoring stopped")
         
         if ENABLE_LATENCY_LOGGING:
             logger.debug("User speech committed - latency tracking started")
@@ -215,7 +215,7 @@ async def kisan_mitra_session(ctx: JobContext):
         
         # Stop silence monitoring while agent speaks
         silence_handler.stop()
-        logger.debug("🔇 Agent speaking - silence monitoring stopped")
+        logger.debug("[Agent] Agent speaking - silence monitoring stopped")
         
         # Log detailed pipeline metrics
         if ENABLE_LATENCY_LOGGING:
@@ -229,7 +229,7 @@ async def kisan_mitra_session(ctx: JobContext):
         """
         # Start monitoring for silence after agent finishes speaking
         silence_handler.start()
-        logger.info("🔊 Agent stopped speaking - silence monitoring started")
+        logger.info("[Agent] Agent stopped speaking - silence monitoring started")
         
         # Reset for next turn
         latency_tracker.reset()
@@ -279,11 +279,78 @@ async def kisan_mitra_session(ctx: JobContext):
     
     logger.info(f"Kisan Mitra connected to room: {ctx.room.name}")
     
+    # ========== OUTBOUND CALL DETECTION ==========
+    # For outbound weather alert calls, the room name starts with "outbound-weather-alert-"
+    is_outbound_call = ctx.room.name.startswith("outbound-weather-alert-")
+    logger.info(f"Call type: {'OUTBOUND' if is_outbound_call else 'INBOUND'}")
+    logger.info(f"Room metadata: {ctx.room.metadata[:100] if ctx.room.metadata else 'None'}...")
+    
+    # For outbound calls, speak the weather alert from room metadata immediately
+    if is_outbound_call and ctx.room.metadata:
+        logger.info(f"Outbound call detected with room metadata - speaking weather alert now")
+        
+        # Split message into greeting and weather content
+        # The greeting should be spoken first, then the rest
+        message = ctx.room.metadata
+        
+        # Find where the greeting ends (after the first sentence ending with ! or ।)
+        greeting_end = -1
+        for i, char in enumerate(message):
+            if char in ('!', '।'):
+                greeting_end = i + 1
+                break
+        
+        if greeting_end > 0 and greeting_end < len(message) * 0.2:  # Greeting should be <20% of message
+            greeting = message[:greeting_end].strip()
+            weather_content = message[greeting_end:].strip()
+            
+            logger.info(f"[OutboundWeather] Speaking greeting first: {greeting[:50]}...")
+            await session.say(greeting, allow_interruptions=True)
+            
+            # Small delay to let greeting finish and ensure call is stable
+            await asyncio.sleep(1)
+            
+            logger.info(f"[OutboundWeather] Speaking weather content: {weather_content[:50]}...")
+            await session.say(weather_content, allow_interruptions=True)
+        else:
+            # Fallback: speak entire message if can't parse
+            logger.info(f"[OutboundWeather] Speaking complete message (no greeting delimiter found)")
+            await session.say(message, allow_interruptions=True)
+    elif is_outbound_call:
+        logger.warning("Outbound call but no room metadata - using fallback greeting")
+        default_message = (
+            "नमस्ते! मैं किसान मित्र हूँ। "
+            "मैं आपको मौसम की जानकारी देने के लिए कॉल किया हूँ। "
+            "धन्यवाद।"
+        )
+        await session.say(default_message, allow_interruptions=True)
+    
+    # Check if there are any SIP participants already in the room
+    # (Log for debugging purposes)
+    for p in ctx.room.remote_participants.values():
+        if p.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP:
+            logger.info(f"SIP participant present: {p.identity}")
+            
+    # Also listen for new participants joining
+    @ctx.room.on("participant_connected")
+    def on_participant_connected(participant: rtc.RemoteParticipant):
+        logger.info(f"Participant connected: {participant.identity}, kind={participant.kind}")
+        # For outbound calls, the weather message is already spoken from room metadata
+        # No need to handle participant metadata here
+            
+    @ctx.room.on("participant_disconnected")
+    def on_participant_disconnected(participant: rtc.RemoteParticipant):
+        logger.info(f"Participant disconnected: {participant.identity}")
+        # If the SIP user hangs up, we can end the session
+        if participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP:
+            logger.info("SIP participant left, terminating agent session.")
+            asyncio.create_task(ctx.proc.aclose())
+
     # ========== SILENCE MONITORING ==========
     # Note: Silence handler will be started automatically after agent's first speech
     # via the on_agent_stopped_speaking event handler
     
-    logger.info("Session ready - waiting for user to speak first")
+    logger.info("Session ready - waiting for interaction")
 
 
 if __name__ == "__main__":

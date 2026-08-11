@@ -16,6 +16,7 @@ import { KisanHeader } from './KisanHeader';
 import { ConversationPanel } from './ConversationPanel';
 import { MicrophoneError } from './MicrophoneError';
 import { KisanVoiceCard } from './KisanVoiceCard';
+import { WeatherAlertButton } from './WeatherAlertButton';
 import { getPersistentUserId } from '@/lib/userIdGenerator';
 
 export type KisanVoiceState =
@@ -269,16 +270,25 @@ export function KisanMainView() {
 
           {/* Column 2 — Voice control (center/right) */}
           <div className="order-1 flex w-full justify-center xl:absolute xl:right-[8vw] xl:top-1/2 xl:w-[380px] xl:-translate-y-1/2 xl:order-2">
-            <KisanVoiceCard
-              voiceState={voiceState}
-              audioLevel={audioLevel}
-              isMuted={isMuted}
-              canUseButton={canUseButton}
-              isConnected={isConnected}
-              onStartCall={handleStartCall}
-              onEndCall={handleDisconnect}
-              onToggleMic={handleToggleMic}
-            />
+            <div className="flex flex-col gap-4 w-full max-w-[380px]">
+              <KisanVoiceCard
+                voiceState={voiceState}
+                audioLevel={audioLevel}
+                isMuted={isMuted}
+                canUseButton={canUseButton}
+                isConnected={isConnected}
+                onStartCall={handleStartCall}
+                onEndCall={handleDisconnect}
+                onToggleMic={handleToggleMic}
+              />
+              
+              {/* Weather Alert Button - only show when not in active call */}
+              {!isConnected && !isConnecting && (
+                <div className="mt-2">
+                  <WeatherAlertButton />
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </main>

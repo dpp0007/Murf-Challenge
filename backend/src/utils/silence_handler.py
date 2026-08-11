@@ -108,11 +108,11 @@ class ImprovedSilenceHandler:
             
             # Silence detected after timeout
             elapsed = time.perf_counter() - self.last_activity_time
-            logger.info(f"⏱️ Silence detected after {elapsed:.1f}s (retry: {self.retry_count}/{self.max_retries})")
+            logger.info(f"[Silence] Silence detected after {elapsed:.1f}s (retry: {self.retry_count}/{self.max_retries})")
             
             # Check if we've exceeded max retries
             if self.retry_count >= self.max_retries:
-                logger.info(f"⏱️ Max silence retries ({self.max_retries}) reached - ending conversation")
+                logger.info(f"[Silence] Max silence retries ({self.max_retries}) reached - ending conversation")
                 self.stop()
                 return
             

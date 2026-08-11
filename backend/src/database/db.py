@@ -75,6 +75,7 @@ class Database:
                     user_id TEXT UNIQUE NOT NULL,
                     name TEXT,
                     language_preference TEXT DEFAULT 'hi',
+                    outbound_calls_enabled INTEGER DEFAULT 1,
                     created_at TEXT NOT NULL,
                     last_interaction TEXT NOT NULL
                 )
@@ -102,6 +103,18 @@ class Database:
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_farmer_profiles_user_id ON farmer_profiles(user_id)
             """)
+            
+            # Migration: Add outbound_calls_enabled to existing users table
+            try:
+                cursor.execute("SELECT outbound_calls_enabled FROM users LIMIT 1")
+            except sqlite3.OperationalError:
+                # Column doesn't exist, add it
+                logger.info("Migrating database: adding outbound_calls_enabled column")
+                cursor.execute("""
+                    ALTER TABLE users ADD COLUMN outbound_calls_enabled INTEGER DEFAULT 1
+                """)
+                conn.commit()
+                logger.info("Migration complete: outbound_calls_enabled added")
             
             conn.commit()
             conn.close()

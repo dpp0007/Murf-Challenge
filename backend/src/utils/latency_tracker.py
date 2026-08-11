@@ -38,7 +38,7 @@ class LatencyTracker:
     def mark_user_speech_end(self):
         """Mark when user finishes speaking."""
         self.user_speech_end = time.perf_counter()
-        logger.debug(f"🎤 User speech ended at: {self.user_speech_end:.3f}")
+        logger.debug(f"[User] User speech ended at: {self.user_speech_end:.3f}")
     
     def mark_stt_complete(self):
         """Mark when STT processing completes."""
