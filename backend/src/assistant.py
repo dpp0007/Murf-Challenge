@@ -57,8 +57,14 @@ class KisanMitraAssistant(Agent):
         """
         system_prompt = get_system_prompt()
         
-        # For outbound weather alert calls, add a special instruction at the beginning
-        if room_name and room_name.startswith("outbound-weather-alert-"):
+        # Detect call type from room name
+        self.room_name = room_name
+        self.is_outbound_call = room_name and room_name.startswith("outbound-")
+        self.is_escalation_callback = room_name and room_name.startswith("outbound-escalation-callback-")
+        self.is_weather_alert = room_name and room_name.startswith("outbound-weather-alert-")
+        
+        # For outbound weather alert calls, add a special instruction
+        if self.is_weather_alert:
             logger.info(f"[Assistant] Detected outbound weather alert call: {room_name}")
             system_prompt = (
                 "🌦️ OUTBOUND WEATHER ALERT CALL MODE 🌦️\n\n"
@@ -74,13 +80,34 @@ class KisanMitraAssistant(Agent):
                 "After this instruction, here is the full system prompt:\n\n"
             ) + system_prompt
         
+        # For escalation callbacks, add different instructions
+        elif self.is_escalation_callback:
+            logger.info(f"[Assistant] Detected escalation callback call: {room_name}")
+            system_prompt = (
+                "📞 ESCALATION RESOLUTION CALLBACK MODE 📞\n\n"
+                "This is an automatic callback about a resolved escalation.\n"
+                "The farmer had asked for help, and an agricultural adviser has provided an answer.\n"
+                "Your job is to:\n"
+                "1. Greet the farmer warmly by name\n"
+                "2. Briefly explain this is a callback about their escalated problem\n"
+                "3. Repeat their original question naturally\n"
+                "4. Provide the adviser's answer without hallucinating\n"
+                "5. Offer to explain further if needed\n"
+                "6. Keep the tone warm and conversational\n\n"
+                "IMPORTANT:\n"
+                "- DO NOT call lookup_farmer() - context is provided in room metadata\n"
+                "- DO NOT generate a new greeting - use the context provided\n"
+                "- DO NOT invent agricultural recommendations - only repeat the adviser's answer\n"
+                "- Use the farmer's language preference (hindi or english)\n\n"
+                "The farmer context will be in the room metadata.\n\n"
+                "After this instruction, here is the full system prompt:\n\n"
+            ) + system_prompt
+        
         super().__init__(instructions=system_prompt)
         
         logger.info(f"{ASSISTANT_NAME} assistant initialized")
         self.weather_service = WeatherService()
         self.mandi_service = get_mandi_service()
-        self.room_name = room_name  # Store for use in lookup_farmer
-        self.is_outbound_call = room_name and room_name.startswith("outbound-weather-alert-")
         
         # Initialize memory tools and escalation tools
         self.memory_tools = get_farmer_memory_tools()
@@ -88,7 +115,9 @@ class KisanMitraAssistant(Agent):
         
         if room_name:
             logger.info(f"[Assistant] Room name set to: {room_name}")
-            if self.is_outbound_call:
+            if self.is_escalation_callback:
+                logger.info(f"[Assistant] This is an ESCALATION CALLBACK")
+            elif self.is_weather_alert:
                 logger.info(f"[Assistant] This is an OUTBOUND weather alert call")
     
     @function_tool

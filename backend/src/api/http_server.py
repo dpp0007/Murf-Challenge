@@ -4,6 +4,7 @@ FastAPI HTTP Server for Kisan Mitra backend APIs.
 Provides REST endpoints for:
 - Weather alert outbound calling
 - Call status queries
+- Escalation management and resolution
 
 Run with: uvicorn src.api.http_server:app --host 0.0.0.0 --port 8080 --reload
 """
@@ -33,6 +34,7 @@ from api.weather_alert_route import (
     initiate_weather_alert_call,
     get_weather_alert_call_status
 )
+from api.escalation_routes import router as escalation_router
 from database.db import get_database
 
 logger = logging.getLogger("api_server")
@@ -47,7 +49,7 @@ except Exception as e:
 # Initialize FastAPI app (single instance)
 app = FastAPI(
     title="Kisan Mitra API",
-    description="Backend API for Kisan Mitra outbound weather alerts",
+    description="Backend API for Kisan Mitra outbound weather alerts and escalation management",
     version="1.0.0"
 )
 
@@ -66,6 +68,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include escalation routes
+app.include_router(escalation_router, prefix="/api/escalations", tags=["escalations"])
+
 
 # Startup event to initialize service
 @app.on_event("startup")
@@ -83,6 +88,19 @@ async def startup_event():
             logger.warning("[WARN] Outbound weather service is not properly configured")
     except Exception as e:
         logger.error(f"Failed to initialize outbound weather service: {e}", exc_info=True)
+    
+    # Initialize Discord service
+    try:
+        from services.discord_service import get_discord_service
+        discord_svc = get_discord_service()
+        if discord_svc.enabled:
+            logger.info("[Discord] Discord service enabled - initializing bot")
+            if discord_svc.initialize_bot():
+                logger.info("[Discord] Bot client initialized")
+        else:
+            logger.info("[Discord] Discord service not configured")
+    except Exception as e:
+        logger.error(f"Failed to initialize Discord service: {e}", exc_info=True)
 
 
 # Request/Response Models

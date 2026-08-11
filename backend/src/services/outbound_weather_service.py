@@ -555,6 +555,269 @@ class OutboundWeatherAlertService:
             self.active_calls[call_id]["status"] = status
             logger.info(f"[OutboundWeather] Call {call_id} status: {status.value}")
 
+    async def initiate_escalation_callback(
+        self,
+        user_id: str,
+        context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Initiate an automatic callback for a resolved escalation.
+        
+        Reuses the existing SIP/LiveKit infrastructure to call the farmer back
+        with the human adviser's answer.
+        
+        Flow:
+          1. Check if user has opted out of calls
+          2. Look up farmer profile
+          3. Create LiveKit room with escalation context
+          4. Dispatch SIP call via Linphone
+          5. Agent joins room and provides the adviser answer
+        
+        Args:
+            user_id: Farmer's user ID
+            context: Dict with:
+                - call_type: "escalation_resolution"
+                - reference_id: KM-YYYYMMDD-XXXX
+                - farmer_name: Farmer's name
+                - language: hi/en
+                - original_question: What farmer asked
+                - human_answer: What adviser answered
+                - reason: Escalation reason
+                - district: Farmer's district
+        
+        Returns:
+            Response dict with success, call_id, room_name, etc.
+        """
+        try:
+            logger.info(f"[OutboundEscalation] Initiating escalation callback: {context.get('reference_id')}")
+            
+            # ── 1. Check if enabled ──────────────────────────────────────────
+            if not self.is_enabled():
+                logger.error("[OutboundEscalation] Service not configured")
+                return {
+                    "success": False,
+                    "error": "DISABLED",
+                    "message": "Outbound calling is not configured.",
+                }
+            
+            # ── 2. Check opt-out status ──────────────────────────────────────
+            if not self.farmer_repo.can_receive_outbound_calls(user_id):
+                logger.info(f"[OutboundEscalation] User {user_id} has opted out of calls")
+                return {
+                    "success": False,
+                    "error": "OPTED_OUT",
+                    "message": "User has disabled outbound calls.",
+                }
+            
+            # ── 3. Look up farmer profile (for additional context) ──────────────
+            farmer_profile = None
+            farmer_name = context.get("farmer_name", "Farmer")
+            language = context.get("language", "hi")
+            
+            try:
+                farmer_profile = self.farmer_repo.lookup_farmer(user_id)
+                if farmer_profile:
+                    language = farmer_profile.language_preference or language
+            except Exception as e:
+                logger.warning(f"[OutboundEscalation] Could not lookup farmer {user_id}: {e}")
+            
+            # ── 4. Build identifiers ─────────────────────────────────────────
+            reference_id = context.get("reference_id")
+            call_id = f"escalation-callback-{reference_id}"
+            room_name = f"outbound-{call_id}"
+            
+            logger.info(f"[OutboundEscalation] call_id={call_id}, room={room_name}")
+            
+            # ── 5. Build the callback message ────────────────────────────────
+            callback_message = self._generate_escalation_callback_message(
+                farmer_name=farmer_name,
+                language=language,
+                original_question=context.get("original_question", ""),
+                human_answer=context.get("human_answer", ""),
+            )
+            
+            # ── 6. LiveKit API client ────────────────────────────────────────
+            lk_api = api.LiveKitAPI(
+                url=self.livekit_url,
+                api_key=self.livekit_api_key,
+                api_secret=self.livekit_api_secret,
+            )
+            
+            try:
+                # ── 6a. Create the LiveKit room with escalation context ─────────
+                # Store escalation context in room metadata
+                metadata_str = str(context)  # Store context as string in metadata
+                
+                room = await lk_api.room.create_room(
+                    api.CreateRoomRequest(
+                        name=room_name,
+                        empty_timeout=120,   # auto-delete if empty for 2 min
+                        max_participants=5,
+                        metadata=metadata_str,  # Store escalation context
+                    )
+                )
+                logger.info(
+                    f"[OutboundEscalation] LiveKit room created: "
+                    f"{room.name} (sid={room.sid})"
+                )
+                
+                # ── 6b. Create explicit agent dispatch ──────────────────────────
+                try:
+                    dispatch = await lk_api.agent_dispatch.create_dispatch(
+                        api.CreateAgentDispatchRequest(
+                            room=room_name,
+                            agent_name="my-agent",
+                        )
+                    )
+                    logger.info(f"[OutboundEscalation] Agent dispatch created: {dispatch.id}")
+                except AttributeError:
+                    logger.warning("[OutboundEscalation] Agent dispatch API not available")
+                except Exception as dispatch_err:
+                    logger.error(f"[OutboundEscalation] Agent dispatch failed: {dispatch_err}")
+                
+                # ── 6c. Dispatch SIP outbound call ──────────────────────────────
+                sip_call_to = self.linphone_sip_uri.split("@")[0] if "@" in self.linphone_sip_uri else self.linphone_sip_uri
+                logger.info(
+                    f"[OutboundEscalation] Dispatching escalation callback to {self._mask_uri(self.linphone_sip_uri)}"
+                )
+                
+                sip_participant = await lk_api.sip.create_sip_participant(
+                    api.CreateSIPParticipantRequest(
+                        sip_trunk_id=self.sip_trunk_id,
+                        sip_call_to=sip_call_to,
+                        room_name=room_name,
+                        participant_identity=f"escalation-{reference_id[:8]}",
+                        participant_name="Kisan Mitra Adviser",
+                        participant_metadata=metadata_str,
+                    )
+                )
+                logger.info(
+                    f"[OutboundEscalation] SIP participant dispatched: "
+                    f"identity={sip_participant.participant_identity}"
+                )
+                
+            except Exception as dispatch_err:
+                logger.error(
+                    f"[OutboundEscalation] Dispatch failed: {dispatch_err}", exc_info=True
+                )
+                # Attempt cleanup
+                try:
+                    await lk_api.room.delete_room(api.DeleteRoomRequest(room=room_name))
+                except Exception:
+                    pass
+                return {
+                    "success": False,
+                    "error": "SIP_DISPATCH_FAILED",
+                    "message": f"Could not initiate callback: {dispatch_err}",
+                }
+            finally:
+                await lk_api.aclose()
+            
+            # ── 7. Track the call ────────────────────────────────────────────
+            self.active_calls[call_id] = {
+                "call_id": call_id,
+                "call_type": "escalation_resolution",
+                "reference_id": reference_id,
+                "user_id": user_id,
+                "farmer_name": farmer_name,
+                "language": language,
+                "original_question": context.get("original_question"),
+                "human_answer": context.get("human_answer"),
+                "status": CallStatus.RINGING,
+                "room_name": room_name,
+                "sip_participant_identity": sip_participant.participant_identity,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "destination": self.linphone_sip_uri,
+            }
+            
+            logger.info(
+                f"[OutboundEscalation] ✅ Callback dispatched → "
+                f"reference_id={reference_id} call_id={call_id} room={room_name}"
+            )
+            
+            return {
+                "success": True,
+                "call_id": call_id,
+                "reference_id": reference_id,
+                "status": CallStatus.RINGING.value,
+                "message": callback_message,
+                "room_name": room_name,
+            }
+        
+        except Exception as e:
+            logger.error(f"[OutboundEscalation] Unexpected error: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": "INTERNAL_ERROR",
+                "message": "An error occurred while preparing the callback.",
+            }
+    
+    def _generate_escalation_callback_message(
+        self,
+        farmer_name: str,
+        language: str,
+        original_question: str,
+        human_answer: str,
+    ) -> str:
+        """
+        Generate a natural callback message for escalation resolution.
+        
+        Args:
+            farmer_name: Farmer's name
+            language: Language preference (hi/en)
+            original_question: The original question asked
+            human_answer: The adviser's answer
+        
+        Returns:
+            Callback message suitable for TTS
+        """
+        try:
+            from utils.hindi_speech import optimize_for_murf_tts
+        except ImportError:
+            from .utils.hindi_speech import optimize_for_murf_tts
+        
+        if language == "hi":
+            # Build natural Hindi greeting
+            greeting = f"नमस्ते {farmer_name} जी, किसान मित्र बोल रहा हूँ।"
+            
+            context = (
+                f"आपने कुछ समय पहले अपनी फसल की समस्या के बारे में हमसे मदद मांगी थी। "
+                f"मैंने आपकी समस्या कृषि सलाहकार तक पहुंचाई थी और उन्होंने इसका जवाब दिया है।"
+            )
+            
+            # Repeat the question
+            question_part = f"आपने पूछा था: {original_question}"
+            
+            # Provide the answer
+            answer_intro = "कृषि सलाहकार की सलाह है:"
+            answer_part = human_answer
+            
+            # Follow-up
+            followup = "क्या आप चाहेंगे कि मैं इसे थोड़ा और समझाऊँ?"
+            
+            message = f"{greeting} {context} {question_part} {answer_intro} {answer_part} {followup}"
+            message = optimize_for_murf_tts(message)
+            
+        else:
+            # English version
+            greeting = f"Hello {farmer_name}, this is Kisan Mitra calling."
+            
+            context = (
+                "You had asked for help with your crop problem some time ago. "
+                "I forwarded your issue to an agricultural adviser and they have responded."
+            )
+            
+            question_part = f"You had asked: {original_question}"
+            
+            answer_intro = "The adviser's recommendation is:"
+            answer_part = human_answer
+            
+            followup = "Would you like me to explain this further?"
+            
+            message = f"{greeting} {context} {question_part} {answer_intro} {answer_part} {followup}"
+        
+        return message
+
     def _mask_uri(self, uri: str) -> str:
         """Mask SIP URI for logging."""
         if not uri or "@" not in uri:

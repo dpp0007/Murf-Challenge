@@ -105,8 +105,7 @@ class EscalationCallbackService:
                 "district": escalation.district,
             }
             
-            # Use existing outbound calling service
-            # We need to extend it to handle escalation callbacks
+            # Use existing outbound calling service with escalation context
             result = await self.outbound_service.initiate_escalation_callback(
                 user_id=user_id,
                 context=callback_context
@@ -119,7 +118,7 @@ class EscalationCallbackService:
                 return True
             else:
                 logger.warning(f"Failed to initiate callback: {result.get('error')}")
-                # Retry logic could go here
+                # Update status to FAILED
                 self.escalation_repo.update_callback_status(
                     reference_id,
                     "FAILED",
