@@ -323,6 +323,102 @@ For deeper documentation on each part, see:
 
 ## Changelog & Implementation Details
 
+### Day 7: Human-in-the-Loop Escalation System (IN PROGRESS)
+**Changes:**
+- 🚀 Complete escalation framework for serious farming issues
+- 🚀 Human adviser integration via Discord
+- 🚀 Automatic callback to farmer with adviser's answer
+- 🚀 Permission-based escalation flow (explicit farmer consent required)
+- 🚀 Escalation tracking and status management
+- 🚀 Opt-out protection (respect farmer preferences)
+
+**Features Implemented:**
+1. **Escalation Request Creation**
+   - Agent identifies serious crop problems or market data issues
+   - Asks farmer permission before escalating
+   - Creates escalation with reference ID (KM-YYYYMMDD-XXXX)
+   - Escalation tracked in SQLite with full audit trail
+
+2. **Escalation Reasons**
+   - `SERIOUS_CROP_PROBLEM` - Severe crop damage, disease, widespread pest infestation
+   - `MARKET_DATA_UNAVAILABLE` - Market price API failures or stale data
+   - `UNCERTAIN_DIAGNOSIS` - Agent cannot confidently diagnose the issue
+   - `OTHER` - General agricultural problems requiring expert help
+
+3. **Discord Adviser Integration**
+   - Open escalations displayed to authorized advisers
+   - Modal form to submit resolution/answer
+   - Role-based authorization (DISCORD_ADVISER_ROLE_ID)
+   - Real-time status updates
+
+4. **Automatic Callback System**
+   - When adviser resolves escalation, automatic SIP call placed to farmer
+   - Callback repeats original question, provides human answer
+   - Uses existing outbound calling infrastructure
+   - Respects farmer opt-out preferences
+   - Retry logic with configurable max attempts
+
+5. **Database Schema**
+   - `escalations` table with full audit trail
+   - Status tracking: OPEN → IN_PROGRESS → RESOLVED
+   - Callback tracking: NOT_STARTED → QUEUED → CALLING → COMPLETED
+   - Indexes on user_id, reference_id for fast queries
+
+**Technical Architecture:**
+
+```
+Farmer Issue → Agent Tool: create_escalation()
+    ↓
+[Permission Check] → Farmer Must Say "हाँ" / "Yes"
+    ↓
+SQLite: INSERT into escalations (OPEN status)
+    ↓
+Discord Service: Send Notification to #escalations channel
+    ↓
+Adviser Reviews & Submits Answer via Modal
+    ↓
+Status: OPEN → RESOLVED + callback_status → QUEUED
+    ↓
+EscalationCallbackService: Trigger OutboundWeatherService
+    ↓
+SIP Call to Farmer's Phone
+    ↓
+Agent Repeats Question + Provides Human Answer
+    ↓
+Callback Complete: callback_status → COMPLETED
+```
+
+**Database Design:**
+- Reference ID format: `KM-20260812-0042` (date + 4-digit sequence)
+- Status: OPEN (awaiting adviser), IN_PROGRESS, RESOLVED
+- Callback Status: NOT_STARTED, QUEUED, CALLING, CONNECTED, COMPLETED, NO_ANSWER, FAILED, SKIPPED_OPT_OUT
+- Timestamps: created_at, updated_at, resolved_at, callback_timestamps
+- Opt-out: Checks farmer.outbound_calls_enabled before placing call
+
+**Files Created:**
+- `backend/src/database/escalation_repository.py` - CRUD operations for escalations
+- `backend/src/services/escalation_service.py` - Escalation determination logic
+- `backend/src/services/escalation_callback_service.py` - Callback orchestration
+- `backend/src/services/discord_service.py` - Discord bot integration (placeholder for discord.py)
+- `backend/src/tools/escalation_tools.py` - Agent function tools
+- `backend/src/api/escalation_routes.py` - HTTP API endpoints for Discord/advisers
+
+**Files Modified:**
+- `backend/src/database/db.py` - Added escalations table schema
+- `backend/src/assistant.py` - Integrated escalation tools
+- `backend/src/prompts/kisan_prompt.py` - Added escalation and permission flow instructions
+- `backend/.env.example` - Added Discord and callback configuration
+
+**Next Steps (To Complete):**
+- [ ] Extend OutboundWeatherAlertService with `initiate_escalation_callback()` method
+- [ ] Integrate escalation routes into FastAPI http_server
+- [ ] Implement Discord bot with discord.py library
+- [ ] Add authorization checks for adviser actions
+- [ ] Implement idempotency protection for callbacks
+- [ ] Add comprehensive logging with reference_id context
+- [ ] Create unit tests for escalation flow
+- [ ] End-to-end test: escalation → Discord → adviser resolution → callback
+
 ### Day 6: Outbound Weather Alerts & Production Fixes
 **Changes:**
 - ✅ Outbound weather alert calling system via SIP (LiveKit SIP Trunk → Linphone)

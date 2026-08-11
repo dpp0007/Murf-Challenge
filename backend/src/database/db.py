@@ -116,6 +116,51 @@ class Database:
                 conn.commit()
                 logger.info("Migration complete: outbound_calls_enabled added")
             
+            # Create escalations table for human-in-the-loop requests
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS escalations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    reference_id TEXT UNIQUE NOT NULL,
+                    user_id TEXT NOT NULL,
+                    farmer_name TEXT NOT NULL,
+                    district TEXT,
+                    reason TEXT NOT NULL,
+                    original_question TEXT NOT NULL,
+                    summary TEXT NOT NULL,
+                    what_agent_checked TEXT,
+                    urgency TEXT DEFAULT 'MEDIUM',
+                    language TEXT DEFAULT 'hi',
+                    preferred_followup TEXT DEFAULT 'phone',
+                    status TEXT DEFAULT 'OPEN',
+                    human_answer TEXT,
+                    resolution_notes TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    resolved_at TEXT,
+                    callback_status TEXT DEFAULT 'NOT_STARTED',
+                    callback_attempts INTEGER DEFAULT 0,
+                    callback_started_at TEXT,
+                    callback_connected_at TEXT,
+                    callback_completed_at TEXT,
+                    callback_error TEXT,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+                )
+            """)
+            
+            # Create indexes for escalations
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_escalations_user_id ON escalations(user_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_escalations_reference_id ON escalations(reference_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_escalations_status ON escalations(status)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_escalations_callback_status ON escalations(callback_status)
+            """)
+            
             conn.commit()
             conn.close()
             

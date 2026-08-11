@@ -15,12 +15,14 @@ try:
     from .services.weather_service import WeatherService
     from .services.mandi_service import get_mandi_service
     from .tools.farmer_memory import get_farmer_memory_tools
+    from .tools.escalation_tools import get_escalation_tools
 except ImportError:
     from prompts import get_system_prompt
     from config import ASSISTANT_NAME
     from services.weather_service import WeatherService
     from services.mandi_service import get_mandi_service
     from tools.farmer_memory import get_farmer_memory_tools
+    from tools.escalation_tools import get_escalation_tools
 
 logger = logging.getLogger("assistant")
 
@@ -80,8 +82,9 @@ class KisanMitraAssistant(Agent):
         self.room_name = room_name  # Store for use in lookup_farmer
         self.is_outbound_call = room_name and room_name.startswith("outbound-weather-alert-")
         
-        # Initialize memory tools
+        # Initialize memory tools and escalation tools
         self.memory_tools = get_farmer_memory_tools()
+        self.escalation_tools = get_escalation_tools()
         
         if room_name:
             logger.info(f"[Assistant] Room name set to: {room_name}")
