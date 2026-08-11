@@ -376,3 +376,65 @@ class KisanMitraAssistant(Agent):
                 "status": "error",
                 "message": "Could not save information due to an error"
             })
+    
+    @function_tool
+    async def create_escalation(
+        self,
+        ctx: RunContext,
+        reason: str,
+        summary: str,
+        original_question: str,
+        what_agent_checked: str,
+        urgency: str = "MEDIUM",
+        preferred_followup: str = "phone",
+    ) -> str:
+        """
+        Create an escalation request for human adviser review.
+        
+        IMPORTANT: This tool should ONLY be called after:
+        1. Agent determined human help is needed
+        2. Agent asked farmer for permission
+        3. Farmer gave explicit permission (हाँ, Yes, ठीक है, etc.)
+        
+        Do NOT call this tool if farmer declined.
+        
+        Args:
+            reason: Escalation reason - must be one of:
+                - SERIOUS_CROP_PROBLEM
+                - MARKET_DATA_UNAVAILABLE
+                - UNCERTAIN_DIAGNOSIS
+                - OTHER
+            summary: Brief summary of the issue (max 500 chars)
+            original_question: The farmer's original question
+            what_agent_checked: What the agent verified before escalating
+            urgency: LOW, MEDIUM, HIGH (default: MEDIUM)
+            preferred_followup: phone, whatsapp, etc. (default: phone)
+        
+        Returns:
+            JSON string with escalation reference ID and status
+        """
+        try:
+            user_id = self.room_name
+            if not user_id:
+                logger.error("[create_escalation] No room_name available")
+                return str({
+                    "status": "error",
+                    "message": "Could not identify user"
+                })
+            
+            logger.info(f"[create_escalation] Creating escalation for user_id: {user_id}")
+            return await self.escalation_tools.create_escalation(
+                ctx=ctx,
+                reason=reason,
+                summary=summary,
+                original_question=original_question,
+                what_agent_checked=what_agent_checked,
+                urgency=urgency,
+                preferred_followup=preferred_followup,
+            )
+        except Exception as e:
+            logger.error(f"Error in create_escalation: {e}")
+            return str({
+                "status": "error",
+                "message": "Could not create escalation due to an error"
+            })
