@@ -1,17 +1,22 @@
 """
-Escalation API Routes for Discord adviser interactions.
+Escalation API Routes for INTERNAL use by Discord bot.
 
-Endpoints:
-- GET /open - Get open escalations for Discord
-- POST /{reference_id}/resolve - Resolve an escalation
-- GET /{reference_id} - Get escalation details
+⚠️ SECURITY: These routes are for INTERNAL use only.
+They should NOT be exposed to the public internet.
+
+The Discord bot should call these service methods directly,
+NOT make HTTP requests to public endpoints.
+
+If public HTTP endpoint is needed, add authentication:
+- Check Authorization header
+- Require internal API token from environment
 """
 
 import logging
 import asyncio
 from typing import Dict, Any, Optional, List
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
 
 from database.escalation_repository import get_escalation_repository
@@ -24,8 +29,72 @@ logger = logging.getLogger("escalation_routes")
 # Create FastAPI router
 router = APIRouter()
 
+# ============================================================================
+# SECURITY: Internal API Token for escalation endpoint
+# ============================================================================
+import os
 
+INTERNAL_API_TOKEN = os.getenv("ESCALATION_INTERNAL_API_TOKEN")
+
+def validate_internal_api_token(authorization: Optional[str] = Header(None)) -> bool:
+    """
+    Validate that request has the internal API token.
+    
+    ⚠️ CRITICAL: This prevents external users from resolving escalations.
+    
+    Args:
+        authorization: Authorization header value
+    
+    Returns:
+        True if token is valid
+    
+    Raises:
+        HTTPException: If token missing or invalid
+    """
+    if not INTERNAL_API_TOKEN:
+        logger.error(
+            "[Security] ESCALATION_INTERNAL_API_TOKEN not configured. "
+            "Escalation resolution endpoints are DISABLED for security."
+        )
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "SERVICE_NOT_CONFIGURED",
+                "message": "Escalation resolution is not configured"
+            }
+        )
+    
+    if not authorization:
+        logger.warning("[Security] Escalation resolution request missing Authorization header")
+        raise HTTPException(
+            status_code=401,
+            detail={"error": "UNAUTHORIZED", "message": "Missing Authorization header"}
+        )
+    
+    # Extract token from "Bearer <token>"
+    if not authorization.startswith("Bearer "):
+        logger.warning("[Security] Invalid Authorization header format")
+        raise HTTPException(
+            status_code=401,
+            detail={"error": "UNAUTHORIZED", "message": "Invalid Authorization format"}
+        )
+    
+    token = authorization[7:]  # Remove "Bearer "
+    
+    if token != INTERNAL_API_TOKEN:
+        logger.warning("[Security] Invalid Authorization token")
+        raise HTTPException(
+            status_code=401,
+            detail={"error": "UNAUTHORIZED", "message": "Invalid token"}
+        )
+    
+    return True
+
+
+# ============================================================================
 # Pydantic models
+# ============================================================================
+
 class ResolveEscalationRequest(BaseModel):
     """Request to resolve an escalation."""
     human_answer: str
@@ -62,35 +131,52 @@ class ResolveEscalationResponse(BaseModel):
     callback_status: str
 
 
-# Route handlers
+# ============================================================================
+# Route handlers - INTERNAL ONLY
+# ============================================================================
+
 @router.get("/open", response_model=OpenEscalationsResponse)
-async def get_open_escalations() -> Dict[str, Any]:
+async def get_open_escalations(
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, Any]:
     """
     Get all open escalations for Discord display.
+    
+    ⚠️ REQUIRES: ESCALATION_INTERNAL_API_TOKEN in Authorization header
     
     Returns:
         List of open escalations
     """
     try:
+        # Validate API token
+        validate_internal_api_token(authorization)
+        
         escalation_repo = get_escalation_repository()
         escalations = escalation_repo.get_open_escalations(limit=100)
         
-        logger.info(f"[API] Retrieved {len(escalations)} open escalations")
+        logger.info(f"[API] Retrieved {len(escalations)} open escalations (authenticated)")
         
         return {
             "escalations": [e.to_dict() for e in escalations],
             "total": len(escalations),
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"[API] Error fetching open escalations: {e}")
         raise HTTPException(status_code=500, detail={"error": str(e)})
 
 
 @router.get("/{reference_id}", response_model=Dict[str, Any])
-async def get_escalation_details(reference_id: str) -> Dict[str, Any]:
+async def get_escalation_details(
+    reference_id: str,
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, Any]:
     """
     Get details for a specific escalation.
+    
+    ⚠️ REQUIRES: ESCALATION_INTERNAL_API_TOKEN in Authorization header
     
     Args:
         reference_id: Escalation reference ID
@@ -99,6 +185,9 @@ async def get_escalation_details(reference_id: str) -> Dict[str, Any]:
         Escalation details
     """
     try:
+        # Validate API token
+        validate_internal_api_token(authorization)
+        
         escalation_repo = get_escalation_repository()
         escalation = escalation_repo.get_escalation_by_reference(reference_id)
         
@@ -106,7 +195,7 @@ async def get_escalation_details(reference_id: str) -> Dict[str, Any]:
             logger.warning(f"[API] Escalation not found: {reference_id}")
             raise HTTPException(status_code=404, detail={"error": "Escalation not found"})
         
-        logger.info(f"[API] Retrieved escalation: {reference_id}")
+        logger.info(f"[API] Retrieved escalation: {reference_id} (authenticated)")
         
         return {
             "status": "success",
@@ -124,23 +213,32 @@ async def get_escalation_details(reference_id: str) -> Dict[str, Any]:
 async def resolve_escalation(
     reference_id: str,
     request: ResolveEscalationRequest,
+    authorization: Optional[str] = Header(None),
 ) -> Dict[str, Any]:
     """
     Resolve an escalation with human answer.
     Automatically queues callback to farmer.
     
-    CRITICAL: This endpoint is called by authorized advisers to submit their answer.
-    The callback is automatically triggered and placed to the farmer's phone.
+    ⚠️ SECURITY-CRITICAL: REQUIRES INTERNAL API TOKEN
+    
+    This endpoint should ONLY be called by:
+    - Discord bot (with Authorization header)
+    - Internal service-to-service calls
+    - NEVER exposed to external/public clients
     
     Args:
         reference_id: Escalation reference ID
         request: Resolution request with human answer
+        authorization: Authorization header with ESCALATION_INTERNAL_API_TOKEN
     
     Returns:
         Resolution result with callback status
     """
     try:
-        logger.info(f"[API] Resolving escalation: {reference_id}")
+        # SECURITY: Validate API token FIRST - before any processing
+        validate_internal_api_token(authorization)
+        
+        logger.info(f"[API] AUTHORIZED resolution request: {reference_id}")
         
         # Validate input
         if not request.human_answer or not request.human_answer.strip():
@@ -207,7 +305,6 @@ async def resolve_escalation(
         logger.info(f"[API] Escalation resolved atomically: {reference_id} -> status=RESOLVED, callback_status=QUEUED")
         
         # Queue callback asynchronously (don't wait for it to complete)
-        # This is critical - we don't block the HTTP response on the callback
         callback_service = get_escalation_callback_service()
         asyncio.create_task(callback_service.queue_callback(reference_id))
         logger.info(f"[API] Callback queued asynchronously: {reference_id}")
@@ -238,5 +335,5 @@ async def resolve_escalation(
         logger.error(f"[API] Error resolving escalation: {e}", exc_info=True)
         raise HTTPException(
             status_code=500, 
-            detail={"error": "Internal server error", "detail": str(e)}
+            detail={"error": "Internal server error"}
         )

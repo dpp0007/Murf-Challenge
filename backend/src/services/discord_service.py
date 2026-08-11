@@ -44,6 +44,9 @@ class DiscordService:
             and DISCORD_PY_AVAILABLE
         )
         
+        # CRITICAL: Validate that adviser role is configured if Discord is enabled
+        self.adviser_authorization_available = bool(self.adviser_role_id) if self.enabled else False
+        
         self.bot: Optional[commands.Bot] = None
         self.escalation_messages: Dict[str, int] = {}  # reference_id -> message_id
         
@@ -54,6 +57,16 @@ class DiscordService:
                 logger.warning("[Discord] Not configured - set DISCORD_BOT_TOKEN, DISCORD_GUILD_ID, DISCORD_ESCALATION_CHANNEL_ID")
         else:
             logger.info(f"[Discord] Service enabled - Guild: {self.guild_id}, Channel: {self.escalation_channel_id}")
+            
+            # Log authorization configuration
+            if not self.adviser_authorization_available:
+                logger.error(
+                    "[Discord] ⚠️  CRITICAL: DISCORD_ADVISER_ROLE_ID not configured. "
+                    "Adviser resolution will be DISABLED. "
+                    "Set DISCORD_ADVISER_ROLE_ID in environment to enable adviser actions."
+                )
+            else:
+                logger.info(f"[Discord] Adviser authorization enabled - Role ID: {self.adviser_role_id}")
     
     def initialize_bot(self):
         """Initialize Discord bot client."""
@@ -234,26 +247,55 @@ class DiscordService:
         """
         Check if a Discord member is authorized to resolve escalations.
         
+        CRITICAL: Fails CLOSED - missing configuration prevents ANY adviser action.
+        
         Args:
             member: Discord member object
         
         Returns:
-            True if member has adviser role
+            True if member has adviser role AND role is configured
         """
+        # FAIL-CLOSED: If role not configured, NO ONE is authorized
         if not self.adviser_role_id:
-            logger.warning("[Discord] DISCORD_ADVISER_ROLE_ID not configured")
-            return True  # Allow if not configured
+            logger.error(
+                "[Discord] AUTHORIZATION FAILED: "
+                "DISCORD_ADVISER_ROLE_ID not configured. "
+                "Protected actions cannot proceed."
+            )
+            return False  # ✅ FAIL-CLOSED - SECURITY FIX
         
         # Check if member has the adviser role
         role_ids = [role.id for role in member.roles]
         has_role = self.adviser_role_id in role_ids
         
         if not has_role:
-            logger.info(f"[Discord] User {member.id} ({member.name}) not authorized - missing adviser role")
+            logger.warning(
+                f"[Discord] AUTHORIZATION DENIED: "
+                f"User {member.id} ({member.name}) does not have adviser role {self.adviser_role_id}"
+            )
         else:
             logger.info(f"[Discord] User {member.id} ({member.name}) authorized as adviser")
         
         return has_role
+    
+    def validate_guild(self, guild_id: int) -> bool:
+        """
+        Validate that interaction comes from the correct Discord guild.
+        
+        Args:
+            guild_id: Guild ID from interaction
+        
+        Returns:
+            True if guild matches configured guild_id
+        """
+        if guild_id != self.guild_id:
+            logger.warning(
+                f"[Discord] GUILD MISMATCH: "
+                f"Request from guild {guild_id}, "
+                f"expected {self.guild_id}"
+            )
+            return False
+        return True
 
 
 # Global instance
