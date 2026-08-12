@@ -416,25 +416,57 @@ class KisanMitraAssistant(Agent):
         try:
             user_id = self.room_name
             if not user_id:
-                logger.error("[create_escalation] No room_name available")
+                logger.error("[create_escalation] No room_name available in assistant")
                 return str({
                     "status": "error",
                     "message": "Could not identify user"
                 })
             
-            logger.info(f"[create_escalation] Creating escalation for user_id: {user_id}")
-            return await self.escalation_tools.create_escalation(
-                ctx=ctx,
-                reason=reason,
-                summary=summary,
+            logger.info(f"[create_escalation] Creating escalation for user_id: {user_id}, reason: {reason}")
+            
+            # Directly create escalation without going through escalation_tools class
+            from services.escalation_service import get_escalation_service, EscalationReason
+            
+            escalation_service = get_escalation_service()
+            
+            # Validate reason
+            valid_reasons = [e.value for e in EscalationReason]
+            if reason not in valid_reasons:
+                logger.warning(f"[create_escalation] Invalid reason: {reason}")
+                return str({
+                    "status": "error",
+                    "message": f"Invalid reason. Must be one of: {', '.join(valid_reasons)}"
+                })
+            
+            # Create escalation
+            escalation = escalation_service.create_escalation(
+                user_id=user_id,
+                reason=EscalationReason(reason),
                 original_question=original_question,
+                summary=summary,
                 what_agent_checked=what_agent_checked,
                 urgency=urgency,
                 preferred_followup=preferred_followup,
             )
+            
+            if not escalation:
+                logger.error(f"[create_escalation] Failed to create escalation for {user_id}")
+                return str({
+                    "status": "error",
+                    "message": "Could not create escalation"
+                })
+            
+            logger.info(f"[create_escalation] SUCCESS: Created escalation {escalation.reference_id} for user {user_id}")
+            
+            return str({
+                "status": "success",
+                "reference_id": escalation.reference_id,
+                "message": "आपकी समस्या कृषि सलाहकार के पास भेज दी गई है। वे जल्द ही आपसे संपर्क करेंगे।"
+            })
+            
         except Exception as e:
-            logger.error(f"Error in create_escalation: {e}")
+            logger.error(f"[create_escalation] Error: {e}", exc_info=True)
             return str({
                 "status": "error",
-                "message": "Could not create escalation due to an error"
+                "message": "Server error creating escalation"
             })
