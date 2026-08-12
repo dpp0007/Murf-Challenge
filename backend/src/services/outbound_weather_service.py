@@ -12,6 +12,7 @@ Handles:
 import logging
 import uuid
 import os
+import asyncio
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 from enum import Enum
@@ -645,20 +646,21 @@ class OutboundWeatherAlertService:
             
             try:
                 # ── 6a. Create the LiveKit room with escalation context ─────────
-                # Store escalation context in room metadata
-                metadata_str = str(context)  # Store context as string in metadata
+                # Store callback message in room metadata for agent to speak
+                metadata_str = callback_message
+                
+                logger.info(f"[SIP_OUTBOUND_START] reference_id={reference_id}, room={room_name}, call_id={call_id}")
                 
                 room = await lk_api.room.create_room(
                     api.CreateRoomRequest(
                         name=room_name,
                         empty_timeout=120,   # auto-delete if empty for 2 min
                         max_participants=5,
-                        metadata=metadata_str,  # Store escalation context
+                        metadata=metadata_str,  # Store callback message for agent
                     )
                 )
                 logger.info(
-                    f"[OutboundEscalation] LiveKit room created: "
-                    f"{room.name} (sid={room.sid})"
+                    f"[SIP_ROOM_CREATED] room={room.name}, sid={room.sid}"
                 )
                 
                 # ── 6b. Create explicit agent dispatch ──────────────────────────
@@ -669,42 +671,120 @@ class OutboundWeatherAlertService:
                             agent_name="my-agent",
                         )
                     )
-                    logger.info(f"[OutboundEscalation] Agent dispatch created: {dispatch.id}")
+                    logger.info(f"[SIP_AGENT_DISPATCH_CREATED] dispatch_id={dispatch.id}")
                 except AttributeError:
-                    logger.warning("[OutboundEscalation] Agent dispatch API not available")
+                    logger.warning("[SIP_AGENT_DISPATCH_SKIPPED] Agent dispatch API not available in this LiveKit version")
                 except Exception as dispatch_err:
-                    logger.error(f"[OutboundEscalation] Agent dispatch failed: {dispatch_err}")
+                    logger.error(f"[SIP_AGENT_DISPATCH_FAILED] {type(dispatch_err).__name__}: {dispatch_err}")
                 
-                # ── 6c. Dispatch SIP outbound call ──────────────────────────────
+                # ── 6c. Dispatch SIP outbound call with TIMEOUT CONFIGURATION ────
+                # CRITICAL FIX: Set ringing_timeout to allow sufficient time for SIP handshake
                 sip_call_to = self.linphone_sip_uri.split("@")[0] if "@" in self.linphone_sip_uri else self.linphone_sip_uri
                 logger.info(
-                    f"[OutboundEscalation] Dispatching escalation callback to {self._mask_uri(self.linphone_sip_uri)}"
+                    f"[SIP_DESTINATION_RESOLVED] sip_uri={self._mask_uri(self.linphone_sip_uri)}, "
+                    f"sip_trunk_id={self.sip_trunk_id}, sip_call_to={sip_call_to}"
                 )
                 
-                sip_participant = await lk_api.sip.create_sip_participant(
-                    api.CreateSIPParticipantRequest(
-                        sip_trunk_id=self.sip_trunk_id,
-                        sip_call_to=sip_call_to,
-                        room_name=room_name,
-                        participant_identity=f"escalation-{reference_id[:8]}",
-                        participant_name="Kisan Mitra Adviser",
-                        participant_metadata=metadata_str,
-                    )
-                )
-                logger.info(
-                    f"[OutboundEscalation] SIP participant dispatched: "
-                    f"identity={sip_participant.participant_identity}"
-                )
+                # Retry logic for SIP dispatch with exponential backoff
+                max_sip_retries = 2
+                sip_participant = None
+                last_sip_error = None
+                
+                # Import Duration for timeout
+                from google.protobuf.duration_pb2 import Duration
+                
+                for sip_attempt in range(1, max_sip_retries + 1):
+                    try:
+                        logger.info(
+                            f"[SIP_PARTICIPANT_REQUEST_ATTEMPT] attempt={sip_attempt}/{max_sip_retries}, "
+                            f"reference_id={reference_id}, trunk_id={self.sip_trunk_id}"
+                        )
+                        
+                        # Build SIP request with timeout configuration
+                        sip_request = api.CreateSIPParticipantRequest(
+                            sip_trunk_id=self.sip_trunk_id,
+                            sip_call_to=sip_call_to,
+                            room_name=room_name,
+                            participant_identity=f"escalation-{reference_id[:8]}",
+                            participant_name="Kisan Mitra Adviser",
+                            participant_metadata=metadata_str,
+                        )
+                        
+                        # CRITICAL: Set ringing_timeout to 30 seconds (default may be too short)
+                        # This allows time for:
+                        # - LiveKit to route to SIP trunk
+                        # - SIP trunk to contact Linphone
+                        # - Linphone SIP registration/routing
+                        # - Phone to ring
+                        ringing_timeout = Duration()
+                        ringing_timeout.seconds = 30  # 30 seconds for SIP to complete
+                        sip_request.ringing_timeout.CopyFrom(ringing_timeout)
+                        
+                        # Set wait_until_answered to wait for farmer to pick up (optional)
+                        # sip_request.wait_until_answered = True  # Uncomment if needed
+                        
+                        logger.info(f"[SIP_PARTICIPANT_REQUEST_SENT] ringing_timeout=30s, room={room_name}")
+                        
+                        sip_participant = await lk_api.sip.create_sip_participant(sip_request)
+                        
+                        logger.info(
+                            f"[SIP_PARTICIPANT_REQUEST_SUCCESS] "
+                            f"participant_identity={sip_participant.participant_identity}, "
+                            f"reference_id={reference_id}"
+                        )
+                        break  # Success, exit retry loop
+                        
+                    except Exception as sip_err:
+                        last_sip_error = sip_err
+                        error_type = type(sip_err).__name__
+                        error_msg = str(sip_err)
+                        
+                        logger.warning(
+                            f"[SIP_PARTICIPANT_REQUEST_FAILED] "
+                            f"attempt={sip_attempt}/{max_sip_retries}, "
+                            f"error_type={error_type}, "
+                            f"reference_id={reference_id}, "
+                            f"error={error_msg[:100]}"
+                        )
+                        
+                        if sip_attempt < max_sip_retries:
+                            # Wait before retry (exponential backoff: 1s, 2s, ...)
+                            wait_time = 1.0 * (2 ** (sip_attempt - 1))
+                            logger.info(
+                                f"[SIP_RETRY_WAIT] "
+                                f"attempt={sip_attempt}, "
+                                f"next_attempt_in={wait_time}s"
+                            )
+                            await asyncio.sleep(wait_time)
+                        else:
+                            # All retries exhausted
+                            logger.error(
+                                f"[SIP_ALL_RETRIES_EXHAUSTED] "
+                                f"reference_id={reference_id}, "
+                                f"total_attempts={max_sip_retries}, "
+                                f"final_error={error_type}"
+                            )
+                            raise last_sip_error
                 
             except Exception as dispatch_err:
+                error_type = type(dispatch_err).__name__
                 logger.error(
-                    f"[OutboundEscalation] Dispatch failed: {dispatch_err}", exc_info=True
+                    f"[SIP_DISPATCH_FAILED] "
+                    f"reference_id={reference_id}, "
+                    f"error_type={error_type}, "
+                    f"message={str(dispatch_err)[:200]}", 
+                    exc_info=True
                 )
                 # Attempt cleanup
                 try:
+                    logger.info(f"[SIP_ROOM_CLEANUP] Attempting to delete room {room_name}")
                     await lk_api.room.delete_room(api.DeleteRoomRequest(room=room_name))
-                except Exception:
-                    pass
+                    logger.info(f"[SIP_ROOM_CLEANUP_SUCCESS] Room {room_name} deleted")
+                except Exception as cleanup_err:
+                    logger.warning(f"[SIP_ROOM_CLEANUP_FAILED] {cleanup_err}")
+                finally:
+                    await lk_api.aclose()
+                
                 return {
                     "success": False,
                     "error": "SIP_DISPATCH_FAILED",

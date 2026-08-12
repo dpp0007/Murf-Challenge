@@ -11,6 +11,7 @@ requires-python = ">=3.10, <3.15"
 dependencies = [
     "livekit-agents[deepgram,google,silero,turn-detector]>=1.5",
     "google-genai>=0.4.0",
+    "discord.py>=2.3.0",
     "livekit-murf>=0.1.1",
     "livekit-plugins-noise-cancellation~=0.2",
     "python-dotenv",

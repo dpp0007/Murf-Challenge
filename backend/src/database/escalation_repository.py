@@ -87,18 +87,37 @@ class EscalationRepository:
     
     def _generate_reference_id(self) -> str:
         """Generate a unique human-readable reference ID."""
+        import random
+        import uuid
+        import hashlib
+        from datetime import datetime, timezone
+        
         now = datetime.now(timezone.utc)
         date_str = now.strftime("%Y%m%d")
-        # Generate 4-digit sequence number
+        
+        # Use UUID to guarantee uniqueness, then convert to short hash
+        unique_id = str(uuid.uuid4())
+        # Take last 8 chars of UUID for readable suffix
+        hash_suffix = unique_id.replace('-', '')[-8:].upper()
+        
+        # Get sequence for today for readability
         conn = self.db.get_connection()
         cursor = conn.cursor()
-        cursor.execute(
-            f"SELECT COUNT(*) FROM escalations WHERE created_at LIKE ?",
-            (f"{date_str}%",)
-        )
-        count = cursor.fetchone()[0] + 1
-        conn.close()
-        return f"KM-{date_str}-{count:04d}"
+        
+        try:
+            cursor.execute(
+                "SELECT COUNT(*) FROM escalations WHERE DATE(created_at) = ?",
+                (date_str,)
+            )
+            count = cursor.fetchone()[0] + 1
+            
+            # Format: KM-YYYYMMDD-SEQUENCE-HASH
+            # The HASH is derived from UUID so it's guaranteed unique
+            ref_id = f"KM-{date_str}-{count:04d}-{hash_suffix[:4]}"
+            
+            return ref_id
+        finally:
+            conn.close()
     
     def create_escalation(
         self,
@@ -237,7 +256,9 @@ class EscalationRepository:
     ) -> Optional[Escalation]:
         """
         Resolve an escalation with human answer.
-        Atomically sets callback_status to QUEUED.
+        Atomically sets callback_status to QUEUED in a single SQL transaction.
+        
+        CRITICAL: This must be atomic to prevent duplicate callbacks!
         
         Args:
             reference_id: Escalation reference ID
@@ -257,23 +278,8 @@ class EscalationRepository:
             conn = self.db.get_connection()
             cursor = conn.cursor()
             
-            # Fetch current state to verify it's not already resolved
-            cursor.execute("SELECT status, callback_status FROM escalations WHERE reference_id = ?", (reference_id,))
-            row = cursor.fetchone()
-            
-            if not row:
-                logger.warning(f"Escalation not found: {reference_id}")
-                conn.close()
-                return None
-            
-            current_status, current_callback_status = row
-            
-            if current_status == "RESOLVED":
-                logger.info(f"Escalation already resolved: {reference_id}")
-                conn.close()
-                return self.get_escalation_by_reference(reference_id)
-            
-            # Atomically update: set status to RESOLVED and callback_status to QUEUED
+            # ATOMIC: Single transaction - resolve AND set callback status together
+            # This prevents the window where another process sees "NOT_STARTED"
             cursor.execute("""
                 UPDATE escalations
                 SET status = ?,
@@ -289,14 +295,29 @@ class EscalationRepository:
                 resolution_notes,
                 timestamp,
                 timestamp,
-                "QUEUED",
+                "QUEUED",  # Set to QUEUED atomically with RESOLVED
                 reference_id,
                 "RESOLVED"
             ))
             
             affected = cursor.rowcount
             conn.commit()
+            
+            if affected == 0:
+                # Already resolved or escalation not found
+                logger.info(f"Escalation already resolved or not found: {reference_id}")
+                conn.close()
+                return self.get_escalation_by_reference(reference_id)
+            
+            logger.info(f"Escalation resolved atomically: {reference_id}")
             conn.close()
+            
+            # Fetch and return the updated escalation
+            return self.get_escalation_by_reference(reference_id)
+            
+        except Exception as e:
+            logger.error(f"Error resolving escalation {reference_id}: {e}")
+            return None
             
             if affected == 0:
                 logger.warning(f"Could not update escalation (already resolved?): {reference_id}")

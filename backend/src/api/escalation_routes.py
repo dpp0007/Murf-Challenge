@@ -309,16 +309,8 @@ async def resolve_escalation(
         asyncio.create_task(callback_service.queue_callback(reference_id))
         logger.info(f"[API] Callback queued asynchronously: {reference_id}")
         
-        # Update Discord status (async, don't block)
-        try:
-            discord_service = get_discord_service()
-            asyncio.create_task(discord_service.update_escalation_status(
-                reference_id=reference_id,
-                status="RESOLVED",
-                callback_status="QUEUED",
-            ))
-        except Exception as e:
-            logger.warning(f"[API] Could not update Discord status: {e}")
+        # Note: Discord status update is handled by Discord service slash command handler
+        # Don't update here to avoid duplicate messages
         
         logger.info(f"[API] Resolution complete: {reference_id}")
         
@@ -335,5 +327,78 @@ async def resolve_escalation(
         logger.error(f"[API] Error resolving escalation: {e}", exc_info=True)
         raise HTTPException(
             status_code=500, 
+            detail={"error": "Internal server error"}
+        )
+
+
+@router.post("/notify-discord")
+async def notify_discord(request: Dict[str, str]):
+    """
+    Internal endpoint to send Discord notification for an escalation.
+    Called by the agent process to notify Discord in the HTTP server process.
+    
+    This is an INTERNAL endpoint (no authentication needed).
+    It's only called from localhost by the agent process.
+    
+    Args:
+        reference_id: Escalation reference ID to notify about
+    
+    Returns:
+        Status of notification
+    """
+    try:
+        reference_id = request.get("reference_id")
+        if not reference_id:
+            raise HTTPException(
+                status_code=400,
+                detail={"error": "reference_id is required"}
+            )
+        
+        logger.info(f"[API] Discord notification request: {reference_id}")
+        
+        # Get escalation
+        escalation_repo = get_escalation_repository()
+        escalation = escalation_repo.get_escalation_by_reference(reference_id)
+        
+        if not escalation:
+            logger.warning(f"[API] Escalation not found for notification: {reference_id}")
+            raise HTTPException(
+                status_code=404,
+                detail={"error": "Escalation not found"}
+            )
+        
+        # Send Discord notification
+        discord_service = get_discord_service()
+        if not discord_service.enabled:
+            logger.warning(f"[API] Discord not enabled, skipping notification")
+            return {
+                "status": "skipped",
+                "message": "Discord notifications disabled"
+            }
+        
+        # Queue the notification as a background task instead of awaiting directly
+        # This avoids asyncio context issues with discord.py
+        try:
+            asyncio.create_task(discord_service._send_notification_async(escalation))
+            logger.info(f"[API] Discord notification task created: {reference_id}")
+            return {
+                "status": "success",
+                "message": "Discord notification queued",
+                "reference_id": reference_id
+            }
+        except Exception as e:
+            logger.error(f"[API] Failed to queue notification task: {e}")
+            return {
+                "status": "failed",
+                "message": "Could not queue Discord notification",
+                "reference_id": reference_id
+            }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[API] Error in Discord notification: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
             detail={"error": "Internal server error"}
         )

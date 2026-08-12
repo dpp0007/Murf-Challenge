@@ -96,6 +96,21 @@ def prewarm(proc: JobProcess):
     # Load VAD model
     proc.userdata["vad"] = silero.VAD.load()
     logger.info("[OK] VAD model preloaded")
+    
+    # Initialize Discord bot in background (for escalations)
+    try:
+        from services.discord_service import get_discord_service
+        discord_svc = get_discord_service()
+        if discord_svc.enabled:
+            logger.info("[Discord] Initializing Discord bot during prewarm")
+            if discord_svc.initialize_bot():
+                logger.info("[Discord] Bot initialized and starting in background")
+            else:
+                logger.warning("[Discord] Bot initialization failed during prewarm")
+        else:
+            logger.debug("[Discord] Discord service not configured")
+    except Exception as e:
+        logger.error(f"[Discord] Failed to initialize Discord during prewarm: {e}", exc_info=True)
 
 
 server.setup_fnc = prewarm
@@ -280,57 +295,93 @@ async def kisan_mitra_session(ctx: JobContext):
     logger.info(f"Kisan Mitra connected to room: {ctx.room.name}")
     
     # ========== OUTBOUND CALL DETECTION ==========
-    # For outbound weather alert calls, the room name starts with "outbound-weather-alert-"
-    is_outbound_call = ctx.room.name.startswith("outbound-weather-alert-")
-    logger.info(f"Call type: {'OUTBOUND' if is_outbound_call else 'INBOUND'}")
-    logger.info(f"Room metadata: {ctx.room.metadata[:100] if ctx.room.metadata else 'None'}...")
+    # For outbound weather alert calls, the room name contains "weather-alert"
+    # For escalation callbacks, the room name contains "escalation-callback"
+    is_weather_alert_call = "weather-alert" in ctx.room.name
+    is_escalation_callback = "escalation-callback" in ctx.room.name
+    is_outbound_call = is_weather_alert_call or is_escalation_callback
     
-    # For outbound calls, speak the weather alert from room metadata immediately
+    logger.info(f"Call type: {'OUTBOUND-WEATHER' if is_weather_alert_call else 'OUTBOUND-ESCALATION' if is_escalation_callback else 'INBOUND'}")
+    logger.info(f"Room metadata present: {bool(ctx.room.metadata)}")
+    
+    # For outbound calls, speak the message from room metadata immediately
     if is_outbound_call and ctx.room.metadata:
-        logger.info(f"Outbound call detected with room metadata - speaking weather alert now")
+        logger.info(f"Outbound call detected - preparing callback message")
         
-        # Split message into greeting and weather content
-        # The greeting should be spoken first, then the rest
-        message = ctx.room.metadata
+        message = ctx.room.metadata.strip()
         
-        # Find where the greeting ends (after the first sentence ending with ! or ।)
-        greeting_end = -1
-        for i, char in enumerate(message):
-            if char in ('!', '।'):
-                greeting_end = i + 1
-                break
+        # VALIDATION: Check if metadata is valid callback message
+        # Metadata should be natural Hindi/English text, NOT a Python dict string
+        if message.startswith("{'") or message.startswith('{'):
+            logger.error(f"[ERROR] Room metadata is a Python dict, not a natural message!")
+            logger.error(f"[ERROR] Metadata: {message[:100]}...")
+            # Use fallback instead of sending dict to farmer
+            if is_escalation_callback:
+                logger.error(f"[OutboundEscalation] Adviser's answer was not properly formatted in metadata")
+            message = None
         
-        if greeting_end > 0 and greeting_end < len(message) * 0.2:  # Greeting should be <20% of message
-            greeting = message[:greeting_end].strip()
-            weather_content = message[greeting_end:].strip()
+        if message:
+            # IMPROVED PARSING: Split message into greeting + content more robustly
+            # Look for first sentence separator (! or ।)
+            greeting_end = -1
+            for i, char in enumerate(message):
+                if char in ('!', '।', '?', '.'):  # Better delimiters
+                    if i < len(message) * 0.25:  # Greeting should be <25% of total
+                        greeting_end = i + 1
+                        break
             
-            logger.info(f"[OutboundWeather] Speaking greeting first: {greeting[:50]}...")
-            await session.say(greeting, allow_interruptions=True)
-            
-            # Small delay to let greeting finish and ensure call is stable
-            await asyncio.sleep(1)
-            
-            logger.info(f"[OutboundWeather] Speaking weather content: {weather_content[:50]}...")
-            await session.say(weather_content, allow_interruptions=True)
+            if greeting_end > 0:
+                greeting = message[:greeting_end].strip()
+                content = message[greeting_end:].strip()
+                
+                if is_escalation_callback:
+                    logger.info(f"[OutboundEscalation] Speaking greeting: {greeting[:60]}...")
+                    logger.info(f"[OutboundEscalation] Speaking adviser answer: {content[:60]}...")
+                else:
+                    logger.info(f"[OutboundWeather] Speaking greeting: {greeting[:60]}...")
+                    logger.info(f"[OutboundWeather] Speaking content: {content[:60]}...")
+                
+                try:
+                    await session.say(greeting, allow_interruptions=True)
+                    await asyncio.sleep(1)  # Small delay for call stability
+                    
+                    if content:
+                        await session.say(content, allow_interruptions=True)
+                    else:
+                        logger.warning(f"[Outbound] No content after greeting")
+                except Exception as e:
+                    logger.error(f"[Outbound] Failed to speak parsed message: {e}")
+            else:
+                # Fallback: speak entire message if can't parse
+                logger.warning(f"[Outbound] Could not parse greeting/content - speaking full message")
+                if is_escalation_callback:
+                    logger.warning(f"[OutboundEscalation] No sentence delimiter found - might confuse farmer")
+                try:
+                    await session.say(message, allow_interruptions=True)
+                except Exception as e:
+                    logger.error(f"[Outbound] Failed to speak message: {e}")
         else:
-            # Fallback: speak entire message if can't parse
-            logger.info(f"[OutboundWeather] Speaking complete message (no greeting delimiter found)")
-            await session.say(message, allow_interruptions=True)
-    elif is_outbound_call:
-        logger.warning("Outbound call but no room metadata - using fallback greeting")
-        default_message = (
-            "नमस्ते! मैं किसान मित्र हूँ। "
-            "मैं आपको मौसम की जानकारी देने के लिए कॉल किया हूँ। "
-            "धन्यवाद।"
-        )
-        await session.say(default_message, allow_interruptions=True)
+            # message is None - use default
+            logger.warning("Outbound call but no valid message in metadata - using fallback greeting")
+            if is_escalation_callback:
+                default_message = (
+                    "नमस्ते! मैं किसान मित्र हूँ। "
+                    "आपकी समस्या का समाधान मेरे पास है। "
+                    "कृपया सुनिए।"
+                )
+            else:
+                default_message = (
+                    "नमस्ते! मैं किसान मित्र हूँ। "
+                    "मैं आपको मौसम की जानकारी देने के लिए कॉल किया हूँ। "
+                    "धन्यवाद।"
+                )
+            await session.say(default_message, allow_interruptions=True)
     
     # Check if there are any SIP participants already in the room
     # (Log for debugging purposes)
     for p in ctx.room.remote_participants.values():
         if p.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP:
             logger.info(f"SIP participant present: {p.identity}")
-            
     # Also listen for new participants joining
     @ctx.room.on("participant_connected")
     def on_participant_connected(participant: rtc.RemoteParticipant):
@@ -344,7 +395,8 @@ async def kisan_mitra_session(ctx: JobContext):
         # If the SIP user hangs up, we can end the session
         if participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP:
             logger.info("SIP participant left, terminating agent session.")
-            asyncio.create_task(ctx.proc.aclose())
+            # End the session gracefully - no direct process termination needed
+            # The agent will detect no participants and exit naturally
 
     # ========== SILENCE MONITORING ==========
     # Note: Silence handler will be started automatically after agent's first speech

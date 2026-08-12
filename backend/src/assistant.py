@@ -461,10 +461,29 @@ class KisanMitraAssistant(Agent):
             
             logger.info(f"[create_escalation] SUCCESS: Created escalation {escalation.reference_id} for user {user_id}")
             
-            # Send Discord notification asynchronously
+            # Send Discord notification via HTTP call to API server
+            # (The agent process and HTTP server are separate, so we need to call the API)
             try:
-                logger.info(f"[create_escalation] Sending Discord notification for {escalation.reference_id}")
-                asyncio.create_task(discord_service.send_escalation_notification(escalation))
+                logger.info(f"[create_escalation] Triggering Discord notification via HTTP for {escalation.reference_id}")
+                import httpx
+                # Make HTTP request to the API server (which has the connected Discord bot)
+                # Use localhost since both services run on same machine
+                async def notify_discord_via_http():
+                    async with httpx.AsyncClient() as client:
+                        try:
+                            response = await client.post(
+                                "http://localhost:8080/api/escalations/notify-discord",
+                                json={"reference_id": escalation.reference_id},
+                                timeout=5.0
+                            )
+                            if response.status_code == 200:
+                                logger.info(f"[create_escalation] Discord notification sent via HTTP: {escalation.reference_id}")
+                            else:
+                                logger.warning(f"[create_escalation] Discord HTTP notification failed: {response.status_code}")
+                        except Exception as e:
+                            logger.warning(f"[create_escalation] Discord HTTP notification error: {e}")
+                
+                asyncio.create_task(notify_discord_via_http())
             except Exception as e:
                 logger.warning(f"[create_escalation] Could not send Discord notification: {e}")
             

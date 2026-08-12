@@ -72,10 +72,92 @@ app.add_middleware(
 app.include_router(escalation_router, prefix="/api/escalations", tags=["escalations"])
 
 
+# Debug endpoint for Discord command syncing
+@app.post("/api/discord/sync-commands")
+async def sync_discord_commands():
+    """
+    Manually sync Discord slash commands to the guild.
+    Use this if /resolve command is not appearing in Discord.
+    
+    Call with: curl -X POST http://localhost:8080/api/discord/sync-commands
+    
+    Returns:
+        Status of sync operation
+    """
+    try:
+        from services.discord_service import get_discord_service
+        import asyncio
+        
+        discord_svc = get_discord_service()
+        
+        if not discord_svc.enabled:
+            return {
+                "status": "error",
+                "message": "Discord service not configured"
+            }
+        
+        if not discord_svc.bot or not discord_svc.bot.user:
+            return {
+                "status": "error",
+                "message": "Discord bot not connected - wait for bot to connect"
+            }
+        
+        # Try guild sync first
+        guild = discord_svc.bot.get_guild(discord_svc.guild_id)
+        guild_result = None
+        
+        if guild:
+            try:
+                print(f"[Sync API] Syncing to guild {guild.name}...")
+                synced = await discord_svc.bot.tree.sync(guild=guild)
+                guild_result = [cmd.name for cmd in synced]
+                print(f"[Sync API] Guild sync result: {guild_result}")
+            except Exception as e:
+                print(f"[Sync API] Guild sync failed: {e}")
+        
+        # Also do global sync
+        try:
+            print(f"[Sync API] Doing global sync...")
+            # Run in bot's event loop
+            if discord_svc._bot_loop:
+                future = asyncio.run_coroutine_threadsafe(
+                    discord_svc.bot.tree.sync(),
+                    discord_svc._bot_loop
+                )
+                global_synced = future.result(timeout=10)
+                global_result = [cmd.name for cmd in global_synced]
+                print(f"[Sync API] Global sync result: {global_result}")
+            else:
+                global_result = None
+        except Exception as e:
+            print(f"[Sync API] Global sync failed: {e}")
+            global_result = None
+        
+        logger.info(f"[API] Discord sync completed - guild: {guild_result}, global: {global_result}")
+        
+        return {
+            "status": "success",
+            "message": "Commands synced",
+            "guild_synced": guild_result,
+            "global_synced": global_result
+        }
+        
+    except Exception as e:
+        logger.error(f"[API] Error syncing Discord commands: {e}", exc_info=True)
+        print(f"[Sync API] Error: {e}")
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
+
 # Startup event to initialize service
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup."""
+    print("[STARTUP] Startup event triggered")
+    logger.info("[STARTUP] Startup event triggered")
+    
     try:
         from services.outbound_weather_service import get_outbound_weather_service
         service = get_outbound_weather_service()
@@ -91,15 +173,30 @@ async def startup_event():
     
     # Initialize Discord service
     try:
+        print("[STARTUP] Initializing Discord service...")
+        logger.info("[STARTUP] Initializing Discord service...")
         from services.discord_service import get_discord_service
         discord_svc = get_discord_service()
+        print(f"[STARTUP] Discord service obtained, enabled={discord_svc.enabled}")
+        logger.info(f"[STARTUP] Discord service obtained, enabled={discord_svc.enabled}")
+        
         if discord_svc.enabled:
             logger.info("[Discord] Discord service enabled - initializing bot")
-            if discord_svc.initialize_bot():
-                logger.info("[Discord] Bot client initialized")
+            print("[Discord] Discord service enabled - initializing bot")
+            bot_init_result = discord_svc.initialize_bot()
+            print(f"[Discord] initialize_bot() returned: {bot_init_result}")
+            logger.info(f"[Discord] initialize_bot() returned: {bot_init_result}")
+            if bot_init_result:
+                logger.info("[Discord] ✅ Bot client initialized and should be starting in background")
+                print("[Discord] ✅ Bot client initialized and should be starting in background")
+            else:
+                logger.error("[Discord] ❌ Bot client initialization returned False")
+                print("[Discord] ❌ Bot client initialization returned False")
         else:
             logger.info("[Discord] Discord service not configured")
+            print("[Discord] Discord service not configured")
     except Exception as e:
+        print(f"[STARTUP] Exception during Discord initialization: {e}")
         logger.error(f"Failed to initialize Discord service: {e}", exc_info=True)
 
 
@@ -136,6 +233,50 @@ class CallStatusResponse(BaseModel):
 async def health_check():
     """Health check endpoint."""
     return {"status": "healthy", "service": "kisan-mitra-api"}
+
+
+# Discord status endpoint
+@app.get("/api/discord/status")
+async def discord_status():
+    """Get Discord bot status and command info."""
+    try:
+        from services.discord_service import get_discord_service
+        
+        discord_svc = get_discord_service()
+        
+        if not discord_svc.enabled:
+            return {
+                "enabled": False,
+                "reason": "Discord not configured"
+            }
+        
+        if not discord_svc.bot:
+            return {
+                "enabled": True,
+                "connected": False,
+                "reason": "Bot not initialized"
+            }
+        
+        is_connected = discord_svc.bot.user is not None
+        
+        commands = list(discord_svc.bot.tree._get_all_commands()) if discord_svc.bot else []
+        
+        return {
+            "enabled": True,
+            "connected": is_connected,
+            "bot_name": str(discord_svc.bot.user) if discord_svc.bot.user else None,
+            "guild_id": discord_svc.guild_id,
+            "guild_name": discord_svc.bot.get_guild(discord_svc.guild_id).name if is_connected else None,
+            "commands_registered": [cmd.name for cmd in commands],
+            "total_commands": len(commands)
+        }
+        
+    except Exception as e:
+        logger.error(f"[API] Error getting Discord status: {e}")
+        return {
+            "enabled": True,
+            "error": str(e)
+        }
 
 
 # Weather Alert Call Endpoint
