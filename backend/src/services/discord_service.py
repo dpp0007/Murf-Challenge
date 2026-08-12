@@ -94,11 +94,28 @@ class DiscordService:
                     logger.error(f"[Discord] Error on ready: {e}")
             
             logger.info("[Discord] Bot client initialized")
+            
+            # Start bot in background if token is valid
+            import asyncio
+            try:
+                # Try to start bot in background
+                asyncio.create_task(self._start_bot_background())
+            except Exception as e:
+                logger.warning(f"[Discord] Could not start bot in background: {e}")
+            
             return True
             
         except Exception as e:
             logger.error(f"[Discord] Failed to initialize bot: {e}")
             return False
+    
+    async def _start_bot_background(self):
+        """Start Discord bot in background."""
+        try:
+            logger.info("[Discord] Starting bot in background...")
+            await self.bot.start(self.bot_token)
+        except Exception as e:
+            logger.error(f"[Discord] Failed to start bot in background: {e}")
     
     async def send_escalation_notification(self, escalation: Any) -> Optional[int]:
         """
