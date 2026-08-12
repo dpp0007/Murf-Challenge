@@ -426,8 +426,11 @@ class KisanMitraAssistant(Agent):
             
             # Directly create escalation without going through escalation_tools class
             from services.escalation_service import get_escalation_service, EscalationReason
+            from services.discord_service import get_discord_service
+            import asyncio
             
             escalation_service = get_escalation_service()
+            discord_service = get_discord_service()
             
             # Validate reason
             valid_reasons = [e.value for e in EscalationReason]
@@ -457,6 +460,13 @@ class KisanMitraAssistant(Agent):
                 })
             
             logger.info(f"[create_escalation] SUCCESS: Created escalation {escalation.reference_id} for user {user_id}")
+            
+            # Send Discord notification asynchronously
+            try:
+                logger.info(f"[create_escalation] Sending Discord notification for {escalation.reference_id}")
+                asyncio.create_task(discord_service.send_escalation_notification(escalation))
+            except Exception as e:
+                logger.warning(f"[create_escalation] Could not send Discord notification: {e}")
             
             return str({
                 "status": "success",
