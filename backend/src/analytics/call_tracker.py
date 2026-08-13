@@ -42,10 +42,15 @@ class CallTracker:
         
         self.start_time = time.time()
         self.connected_time: Optional[float] = None
-        self.task_recorded = False
+        self.task_type: Optional[str] = None
+        self.tool_used: Optional[str] = None
+        self.task_started = False
+        self.task_completed = False
+        self.task_failed = False
         self.tool_recorded = False
         self.escalation_recorded = False
         self.finalized = False
+        self.user_interacted = False
         
         # Start the call record with user_id if provided
         self.analytics_service.start_call(
@@ -62,23 +67,52 @@ class CallTracker:
         self.analytics_service.connect_call(self.call_id)
         logger.debug(f"[CallTracker] Connected: {self.call_id}")
     
-    def record_task(self, task_type: str) -> None:
-        """Record the task type for this call."""
-        if self.task_recorded:
-            logger.warning(f"[CallTracker] Task already recorded for {self.call_id}")
+    def record_task_started(self, task_type: str) -> None:
+        """Mark that user has requested a specific task."""
+        if self.task_started:
+            logger.warning(f"[CallTracker] Task already started for {self.call_id}")
             return
         
-        self.task_recorded = True
+        self.task_started = True
+        self.task_type = task_type
+        self.user_interacted = True
         self.analytics_service.record_task(self.call_id, task_type)
-        logger.debug(f"[CallTracker] Task: {self.call_id} = {task_type}")
+        logger.debug(f"[CallTracker] Task started: {self.call_id} = {task_type}")
+    
+    def record_task_completed(self) -> None:
+        """Mark that the requested task was successfully completed."""
+        if self.task_completed:
+            logger.warning(f"[CallTracker] Task already marked completed for {self.call_id}")
+            return
+        
+        if not self.task_started:
+            logger.warning(f"[CallTracker] Task not started yet for {self.call_id}")
+            return
+        
+        self.task_completed = True
+        logger.debug(f"[CallTracker] Task completed: {self.call_id}")
+    
+    def record_task_failed(self) -> None:
+        """Mark that the requested task failed to complete."""
+        if self.task_failed:
+            logger.warning(f"[CallTracker] Task already marked failed for {self.call_id}")
+            return
+        
+        if not self.task_started:
+            logger.warning(f"[CallTracker] Task not started yet for {self.call_id}")
+            return
+        
+        self.task_failed = True
+        logger.debug(f"[CallTracker] Task failed: {self.call_id}")
     
     def record_tool(self, tool_name: str) -> None:
-        """Record tool usage."""
+        """Record successful tool usage."""
         if self.tool_recorded:
             logger.warning(f"[CallTracker] Tool already recorded for {self.call_id}")
             return
         
         self.tool_recorded = True
+        self.tool_used = tool_name
         self.analytics_service.record_tool(self.call_id, tool_name)
         logger.debug(f"[CallTracker] Tool: {self.call_id} = {tool_name}")
     

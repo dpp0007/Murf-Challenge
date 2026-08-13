@@ -478,31 +478,41 @@ async def _kisan_mitra_session_impl(ctx: JobContext):
             # Use the call_id from the session closure, not ctx.room.name
             current_tracker = get_tracker(call_id)
             if current_tracker and not current_tracker.finalized:
-                # Improved outcome determination:
-                # - If a tool was explicitly recorded, call was successful
-                # - If connected but no tool recorded, check task type
-                # - If never connected, it's a connection failure
-                # - If user spoke but didn't complete task, it's incomplete
+                # Improved outcome determination based on actual task completion
+                # SUCCESS: Tool was recorded AND task was marked completed
+                #   Example: Weather query -> API called -> valid data returned -> agent delivers result
+                # FAILED - TASK_INCOMPLETE: Task was started but not completed
+                #   Example: Weather query -> API failed -> no valid result
+                # FAILED - USER_HANGUP: No meaningful task was attempted
+                #   Example: User connects and immediately hangs up
                 
-                if current_tracker.tool_recorded:
-                    # Tool was successfully called and completed
-                    current_tracker.finalize_success("Task completed successfully before disconnect")
-                    logger.info(f"[Analytics] Call finalized as SUCCESS (tool executed): {call_id}")
-                elif current_tracker.task_recorded:
-                    # User asked for something but tool wasn't called
-                    # This could be API failure or incomplete task
-                    current_tracker.finalize_failure(
-                        "TASK_INCOMPLETE", 
-                        "User requested task but it was not completed"
+                if current_tracker.task_completed and current_tracker.tool_recorded:
+                    # Task was completed successfully
+                    logger.info(f"[Analytics] Call finalized as SUCCESS: {call_id} (task: {current_tracker.task_type}, tool: {current_tracker.tool_used})")
+                    current_tracker.finalize_success(
+                        f"Task completed: {current_tracker.task_type}"
                     )
-                    logger.info(f"[Analytics] Call finalized as FAILED (task incomplete): {call_id}")
-                else:
-                    # No task was attempted before disconnect
+                elif current_tracker.task_started and current_tracker.task_failed:
+                    # Task was attempted but failed
+                    logger.warning(f"[Analytics] Call finalized as FAILED: {call_id} (task_failed: {current_tracker.task_type})")
                     current_tracker.finalize_failure(
-                        "USER_HANGUP", 
+                        "TASK_INCOMPLETE",
+                        f"Task '{current_tracker.task_type}' could not be completed"
+                    )
+                elif current_tracker.task_started and not current_tracker.task_completed:
+                    # Task was started but neither completed nor failed (shouldn't happen, but handle it)
+                    logger.warning(f"[Analytics] Call finalized as FAILED: {call_id} (task incomplete)")
+                    current_tracker.finalize_failure(
+                        "TASK_INCOMPLETE",
+                        f"Task '{current_tracker.task_type}' was not completed before disconnect"
+                    )
+                else:
+                    # No task was attempted - user disconnected without making a meaningful request
+                    logger.info(f"[Analytics] Call finalized as FAILED: {call_id} (user_hangup)")
+                    current_tracker.finalize_failure(
+                        "USER_HANGUP",
                         "User disconnected without requesting any task"
                     )
-                    logger.info(f"[Analytics] Call finalized as FAILED (user hangup): {call_id}")
             else:
                 if not current_tracker:
                     logger.warning(f"[Analytics] No tracker found for call_id: {call_id}")
