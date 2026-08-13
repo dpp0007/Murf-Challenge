@@ -40,7 +40,7 @@ class KisanMitraAssistant(Agent):
     - Live mandi prices (Indian agricultural markets)
     """
     
-    def __init__(self, room_name: Optional[str] = None):
+    def __init__(self, room_name: Optional[str] = None, call_id: Optional[str] = None):
         """
         Initialize Kisan Mitra assistant with system prompt.
         
@@ -54,8 +54,12 @@ class KisanMitraAssistant(Agent):
         
         Args:
             room_name: Optional room name to use as user_id for farmer memory
+            call_id: Optional unique call identifier for analytics tracking
         """
         system_prompt = get_system_prompt()
+        
+        # Store call_id for analytics tracking in tools
+        self.call_id = call_id or room_name
         
         # Detect call type from room name
         self.room_name = room_name
@@ -139,7 +143,21 @@ class KisanMitraAssistant(Agent):
         Returns:
             Formatted weather information as string
         """
+        tracker = None
         try:
+            # Track analytics
+            try:
+                from analytics.call_tracker import get_tracker
+                # Use call_id for tracker lookup (stored during initialization)
+                tracker = get_tracker(self.call_id) if self.call_id else None
+                if tracker:
+                    tracker.record_task("weather")
+                    logger.info(f"[Analytics] get_weather - task 'weather' recorded")
+                else:
+                    logger.debug(f"[Analytics] get_weather - no tracker (call_id: {self.call_id})")
+            except Exception as e:
+                logger.error(f"[Analytics] get_weather - Failed to record task: {e}", exc_info=True)
+            
             logger.info(f"Fetching weather for ({latitude}, {longitude})")
             
             weather_data = await self.weather_service.get_weather(
@@ -149,10 +167,20 @@ class KisanMitraAssistant(Agent):
             )
             
             if not weather_data or not weather_data.get("current"):
+                error_msg = "No weather data received from API"
+                logger.error(f"Weather API failed: {error_msg}")
+                
                 if language == "hi":
                     return "मुझे मौसम की जानकारी अभी नहीं मिल पाई। कृपया बाद में कोशिश करें।"
                 else:
                     return "I couldn't fetch weather data right now. Please try again later."
+            
+            # Success - track tool usage
+            if tracker:
+                tracker.record_tool("weather_api")
+                logger.info(f"[Analytics] get_weather - tool recorded: weather_api")
+            else:
+                logger.debug(f"[Analytics] get_weather - Cannot record tool (no tracker)")
             
             current = weather_data["current"]
             
@@ -181,6 +209,8 @@ class KisanMitraAssistant(Agent):
                 
         except Exception as e:
             logger.error(f"Weather tool error: {e}")
+            # NOTE: Do NOT finalize the call on tool error - just return error message
+            # Tool failures should not terminate the entire call session
             if language == "hi":
                 return "मौसम की जानकारी लाने में समस्या आ रही है। कृपया बाद में कोशिश करें।"
             else:
@@ -207,7 +237,19 @@ class KisanMitraAssistant(Agent):
         Returns:
             Formatted price information as string
         """
+        tracker = None
         try:
+            # Track analytics
+            try:
+                from analytics.call_tracker import get_tracker
+                # Use call_id for tracker lookup
+                tracker = get_tracker(self.call_id) if self.call_id else None
+                if tracker:
+                    tracker.record_task("mandi")
+                    logger.debug(f"[Analytics] get_mandi_prices - task recorded")
+            except Exception as e:
+                logger.debug(f"[Analytics] Failed to get tracker: {e}")
+            
             logger.info(f"Fetching mandi prices for {commodity} in {state}")
             
             prices = await self.mandi_service.get_prices(
@@ -219,6 +261,10 @@ class KisanMitraAssistant(Agent):
             
             # Check if no prices returned
             if not prices or len(prices) == 0:
+                error_msg = f"No mandi data available for {commodity}"
+                logger.error(f"Mandi API: {error_msg}")
+                # NOTE: Do NOT finalize the call on tool error - just return error message
+                
                 if language == "hi":
                     return f"मुझे {commodity} के लिए मंडी की जानकारी अभी नहीं मिल पाई। कृपया बाद में कोशिश करें या अपने नजदीकी मंडी से संपर्क करें।"
                 else:
@@ -230,7 +276,10 @@ class KisanMitraAssistant(Agent):
             
             # Check if price is 0 or invalid - means data is unavailable
             if price_value == 0 or price_value is None:
-                logger.warning(f"Mandi price returned 0 or None for {commodity}")
+                error_msg = f"Invalid price data (0 or None) for {commodity}"
+                logger.warning(f"Mandi price error: {error_msg}")
+                # NOTE: Do NOT finalize the call on tool error - just return error message
+                
                 if language == "hi":
                     return (
                         f"मुझे {commodity} का सही मंडी भाव अभी नहीं मिल पा रहा है। "
@@ -243,6 +292,10 @@ class KisanMitraAssistant(Agent):
                         f"The data may not be available or the API might be down. "
                         f"Please contact your local mandi to get current prices."
                     )
+            
+            # Success - track tool usage
+            if tracker:
+                tracker.record_tool("mandi_api")
             
             # Valid price found - return formatted response
             market = latest.get('market', 'Unknown')
@@ -263,6 +316,7 @@ class KisanMitraAssistant(Agent):
                 
         except Exception as e:
             logger.error(f"Mandi prices tool error: {e}")
+            # NOTE: Do NOT finalize the call on tool error - just return error message
             if language == "hi":
                 return "मंडी के भाव लाने में समस्या आ रही है। कृपया बाद में कोशिश करें।"
             else:
@@ -413,6 +467,7 @@ class KisanMitraAssistant(Agent):
         Returns:
             JSON string with escalation reference ID and status
         """
+        tracker = None
         try:
             user_id = self.room_name
             if not user_id:
@@ -423,6 +478,15 @@ class KisanMitraAssistant(Agent):
                 })
             
             logger.info(f"[create_escalation] Creating escalation for user_id: {user_id}, reason: {reason}")
+            
+            # Get analytics tracker to record escalation
+            try:
+                from analytics.call_tracker import get_tracker
+                tracker = get_tracker(self.room_name)
+                if tracker:
+                    tracker.record_task("escalation")
+            except Exception as e:
+                logger.debug(f"[Analytics] Failed to get tracker for escalation: {e}")
             
             # Directly create escalation without going through escalation_tools class
             from services.escalation_service import get_escalation_service, EscalationReason
@@ -436,6 +500,8 @@ class KisanMitraAssistant(Agent):
             valid_reasons = [e.value for e in EscalationReason]
             if reason not in valid_reasons:
                 logger.warning(f"[create_escalation] Invalid reason: {reason}")
+                if tracker:
+                    tracker.finalize_failure("ESCALATION_INVALID_REASON", reason)
                 return str({
                     "status": "error",
                     "message": f"Invalid reason. Must be one of: {', '.join(valid_reasons)}"
@@ -454,12 +520,18 @@ class KisanMitraAssistant(Agent):
             
             if not escalation:
                 logger.error(f"[create_escalation] Failed to create escalation for {user_id}")
+                if tracker:
+                    tracker.finalize_failure("ESCALATION_CREATION_FAILED", "Database error")
                 return str({
                     "status": "error",
                     "message": "Could not create escalation"
                 })
             
             logger.info(f"[create_escalation] SUCCESS: Created escalation {escalation.reference_id} for user {user_id}")
+            
+            # Track escalation reference ID for analytics
+            if tracker:
+                tracker.record_escalation(escalation.reference_id)
             
             # Send Discord notification via HTTP call to API server
             # (The agent process and HTTP server are separate, so we need to call the API)
@@ -495,6 +567,8 @@ class KisanMitraAssistant(Agent):
             
         except Exception as e:
             logger.error(f"[create_escalation] Error: {e}", exc_info=True)
+            if tracker:
+                tracker.finalize_failure("ESCALATION_EXCEPTION", str(e))
             return str({
                 "status": "error",
                 "message": "Server error creating escalation"

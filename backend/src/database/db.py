@@ -47,9 +47,11 @@ class Database:
         Returns:
             sqlite3.Connection configured with safe defaults
         """
-        conn = sqlite3.connect(str(self.db_path))
+        conn = sqlite3.connect(str(self.db_path), timeout=10.0, check_same_thread=False)
         # Enable foreign keys
         conn.execute("PRAGMA foreign_keys = ON")
+        # Set to WAL mode for better concurrency
+        conn.execute("PRAGMA journal_mode = WAL")
         # Return Row objects for dict-like access
         conn.row_factory = sqlite3.Row
         return conn
@@ -159,6 +161,50 @@ class Database:
             """)
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_escalations_callback_status ON escalations(callback_status)
+            """)
+            
+            # Create call_analytics table for production analytics
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS call_analytics (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    call_id TEXT UNIQUE NOT NULL,
+                    user_id TEXT,
+                    channel TEXT NOT NULL,
+                    language TEXT DEFAULT 'hi',
+                    started_at TEXT NOT NULL,
+                    connected_at TEXT,
+                    ended_at TEXT,
+                    duration_seconds INTEGER,
+                    outcome TEXT DEFAULT 'IN_PROGRESS',
+                    outcome_reason TEXT,
+                    task_type TEXT DEFAULT 'unknown',
+                    tool_used TEXT,
+                    escalated INTEGER DEFAULT 0,
+                    latency_ms INTEGER,
+                    failure_type TEXT,
+                    created_at TEXT NOT NULL,
+                    metadata_json TEXT
+                )
+            """)
+            
+            # Create indexes for analytics queries
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_call_analytics_call_id ON call_analytics(call_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_call_analytics_user_id ON call_analytics(user_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_call_analytics_started_at ON call_analytics(started_at)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_call_analytics_outcome ON call_analytics(outcome)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_call_analytics_channel ON call_analytics(channel)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_call_analytics_task_type ON call_analytics(task_type)
             """)
             
             conn.commit()

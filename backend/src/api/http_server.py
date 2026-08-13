@@ -35,6 +35,7 @@ from api.weather_alert_route import (
     get_weather_alert_call_status
 )
 from api.escalation_routes import router as escalation_router
+from api.analytics_routes import router as analytics_router
 from database.db import get_database
 
 logger = logging.getLogger("api_server")
@@ -70,6 +71,9 @@ app.add_middleware(
 
 # Include escalation routes
 app.include_router(escalation_router, prefix="/api/escalations", tags=["escalations"])
+
+# Include analytics routes
+app.include_router(analytics_router, prefix="/api/analytics", tags=["analytics"])
 
 
 # Debug endpoint for Discord command syncing

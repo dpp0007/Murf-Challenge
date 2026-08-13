@@ -9,10 +9,17 @@ silence detection, and response post-processing for optimal voice UX.
 import sys
 import asyncio
 import logging
+import uuid
+import time
 from pathlib import Path
 
 # Add src directory to path to allow running: python src/agent.py dev
 sys.path.insert(0, str(Path(__file__).parent))
+
+# Configure logging - suppress noisy DEBUG logs from LiveKit framework
+logging.getLogger("livekit.agents").setLevel(logging.INFO)
+logging.getLogger("livekit").setLevel(logging.INFO)
+logging.getLogger("livekit.plugins").setLevel(logging.INFO)
 
 from dotenv import load_dotenv
 from livekit import rtc
@@ -129,7 +136,19 @@ async def kisan_mitra_session(ctx: JobContext):
     - Farmer memory management
     - Session lifecycle
     """
+    try:
+        await _kisan_mitra_session_impl(ctx)
+    except Exception as e:
+        logger.error(f"[CRITICAL] Session initialization failed: {e}", exc_info=True)
+        raise
+
+
+async def _kisan_mitra_session_impl(ctx: JobContext):
     # Setup logging context
+    logger.info("="*80)
+    logger.info("[SESSION START] New Kisan Mitra session starting")
+    logger.info("="*80)
+    
     ctx.log_context_fields = {
         "room": ctx.room.name,
         "agent": AGENT_NAME,
@@ -140,10 +159,41 @@ async def kisan_mitra_session(ctx: JobContext):
     # Extract stable user_id from room name or participant ID
     # Format: voice_assistant_user_<random> from frontend token generation
     user_id = ctx.room.name  # This is stable per caller session
-    logger.info(f"Farmer user_id: {user_id}")
+    logger.info(f"[STEP 1] Farmer user_id set: {user_id}")
     
     # Initialize latency tracker for detailed pipeline metrics
     latency_tracker = LatencyTracker()
+    logger.info(f"[STEP 2] Latency tracker initialized")
+    
+    # Initialize call tracker for analytics
+    # Must import here to avoid circular imports
+    try:
+        from .analytics.call_tracker import get_or_create_tracker
+    except ImportError:
+        from analytics.call_tracker import get_or_create_tracker
+    
+    logger.info(f"[STEP 3] Analytics imports successful")
+    
+    # Generate unique call_id for THIS session instance
+    # Combine room name with timestamp and UUID to ensure uniqueness across multiple sessions
+    # Format: room_name__timestamp_uuid (e.g., "ram__1723554000_a1b2c3d4")
+    session_uuid = str(uuid.uuid4())[:8]  # First 8 chars of UUID for brevity
+    timestamp = int(time.time())
+    call_id = f"{ctx.room.name}__{timestamp}_{session_uuid}"
+    
+    logger.info(f"[STEP 4] GENERATED call_id={call_id} for room={ctx.room.name}")
+    
+    channel = "sip" if any(p.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP for p in ctx.room.remote_participants.values()) else "browser"
+    logger.info(f"[STEP 5] Channel detected: {channel}")
+    
+    tracker = get_or_create_tracker(call_id, channel=channel, language=STT_LANGUAGE, user_id=user_id)
+    logger.info(f"[STEP 6] Tracker created: {call_id}")
+    
+    tracker.mark_connected()
+    logger.info(f"[STEP 7] Tracker marked as connected")
+    
+    logger.info(f"[Analytics] Tracker created: call_id={call_id}, room={ctx.room.name}, channel={channel}")
+    logger.info(f"Analytics tracker initialized for {call_id}")
     
     # Configure voice AI pipeline
     session = AgentSession(
@@ -273,7 +323,7 @@ async def kisan_mitra_session(ctx: JobContext):
     logger.info("Initializing Kisan Mitra assistant...")
     
     await session.start(
-        agent=KisanMitraAssistant(room_name=ctx.room.name),
+        agent=KisanMitraAssistant(room_name=ctx.room.name, call_id=call_id),
         room=ctx.room,
         room_options=room_io.RoomOptions(
             audio_input=room_io.AudioInputOptions(
@@ -321,6 +371,14 @@ async def kisan_mitra_session(ctx: JobContext):
             message = None
         
         if message:
+            # Record task type for SIP calls (weather alert or escalation callback)
+            if is_escalation_callback:
+                tracker.record_task("escalation_callback")
+                logger.info(f"[Analytics] Task type set to: escalation_callback")
+            elif is_weather_alert_call:
+                tracker.record_task("weather_alert")
+                logger.info(f"[Analytics] Task type set to: weather_alert")
+            
             # IMPROVED PARSING: Split message into greeting + content more robustly
             # Look for first sentence separator (! or ।)
             greeting_end = -1
@@ -349,8 +407,14 @@ async def kisan_mitra_session(ctx: JobContext):
                         await session.say(content, allow_interruptions=True)
                     else:
                         logger.warning(f"[Outbound] No content after greeting")
+                    
+                    # Mark as successfully delivered
+                    await asyncio.sleep(1)  # Wait for message to finish
+                    tracker.finalize_success("Outbound message delivered successfully")
+                    logger.info(f"[Analytics] Outbound call finalized as SUCCESS")
                 except Exception as e:
                     logger.error(f"[Outbound] Failed to speak parsed message: {e}")
+                    tracker.finalize_failure("OUTBOUND_DELIVERY_FAILED", str(e))
             else:
                 # Fallback: speak entire message if can't parse
                 logger.warning(f"[Outbound] Could not parse greeting/content - speaking full message")
@@ -358,8 +422,12 @@ async def kisan_mitra_session(ctx: JobContext):
                     logger.warning(f"[OutboundEscalation] No sentence delimiter found - might confuse farmer")
                 try:
                     await session.say(message, allow_interruptions=True)
+                    await asyncio.sleep(1)  # Wait for message to finish
+                    tracker.finalize_success("Outbound message delivered successfully")
+                    logger.info(f"[Analytics] Outbound call finalized as SUCCESS")
                 except Exception as e:
                     logger.error(f"[Outbound] Failed to speak message: {e}")
+                    tracker.finalize_failure("OUTBOUND_DELIVERY_FAILED", str(e))
         else:
             # message is None - use default
             logger.warning("Outbound call but no valid message in metadata - using fallback greeting")
@@ -375,7 +443,14 @@ async def kisan_mitra_session(ctx: JobContext):
                     "मैं आपको मौसम की जानकारी देने के लिए कॉल किया हूँ। "
                     "धन्यवाद।"
                 )
-            await session.say(default_message, allow_interruptions=True)
+            try:
+                await session.say(default_message, allow_interruptions=True)
+                await asyncio.sleep(1)  # Wait for message to finish
+                tracker.finalize_success("Outbound default message delivered successfully")
+                logger.info(f"[Analytics] Outbound call finalized as SUCCESS (with fallback message)")
+            except Exception as e:
+                logger.error(f"[Outbound] Failed to speak default message: {e}")
+                tracker.finalize_failure("OUTBOUND_DELIVERY_FAILED", str(e))
     
     # Check if there are any SIP participants already in the room
     # (Log for debugging purposes)
@@ -392,6 +467,55 @@ async def kisan_mitra_session(ctx: JobContext):
     @ctx.room.on("participant_disconnected")
     def on_participant_disconnected(participant: rtc.RemoteParticipant):
         logger.info(f"Participant disconnected: {participant.identity}")
+        
+        # Finalize analytics for this call using the unique call_id stored in closure
+        try:
+            from .analytics.call_tracker import get_tracker, remove_tracker
+        except ImportError:
+            from analytics.call_tracker import get_tracker, remove_tracker
+        
+        try:
+            # Use the call_id from the session closure, not ctx.room.name
+            current_tracker = get_tracker(call_id)
+            if current_tracker and not current_tracker.finalized:
+                # Improved outcome determination:
+                # - If a tool was explicitly recorded, call was successful
+                # - If connected but no tool recorded, check task type
+                # - If never connected, it's a connection failure
+                # - If user spoke but didn't complete task, it's incomplete
+                
+                if current_tracker.tool_recorded:
+                    # Tool was successfully called and completed
+                    current_tracker.finalize_success("Task completed successfully before disconnect")
+                    logger.info(f"[Analytics] Call finalized as SUCCESS (tool executed): {call_id}")
+                elif current_tracker.task_recorded:
+                    # User asked for something but tool wasn't called
+                    # This could be API failure or incomplete task
+                    current_tracker.finalize_failure(
+                        "TASK_INCOMPLETE", 
+                        "User requested task but it was not completed"
+                    )
+                    logger.info(f"[Analytics] Call finalized as FAILED (task incomplete): {call_id}")
+                else:
+                    # No task was attempted before disconnect
+                    current_tracker.finalize_failure(
+                        "USER_HANGUP", 
+                        "User disconnected without requesting any task"
+                    )
+                    logger.info(f"[Analytics] Call finalized as FAILED (user hangup): {call_id}")
+            else:
+                if not current_tracker:
+                    logger.warning(f"[Analytics] No tracker found for call_id: {call_id}")
+                elif current_tracker.finalized:
+                    logger.debug(f"[Analytics] Call already finalized: {call_id}")
+            
+            # Clean up tracker from memory to allow reuse of call_id in next session
+            remove_tracker(call_id)
+            logger.debug(f"[Analytics] Tracker removed from memory: {call_id}")
+            
+        except Exception as e:
+            logger.error(f"[Analytics] Exception in disconnect handler: {e}", exc_info=True)
+        
         # If the SIP user hangs up, we can end the session
         if participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP:
             logger.info("SIP participant left, terminating agent session.")
