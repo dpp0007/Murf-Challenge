@@ -595,3 +595,66 @@ class KisanMitraAssistant(Agent):
                 "status": "error",
                 "message": "Server error creating escalation"
             })
+    async def handoff_to_crop_specialist(
+        self,
+        ctx: RunContext,
+        crop: str,
+        problem_description: str,
+        farmer_name: Optional[str] = None,
+        district: Optional[str] = None,
+    ) -> str:
+        """
+        Hand off the conversation to the Crop Problem Specialist agent.
+        
+        Use this ONLY when the farmer presents a specific crop problem that requires
+        focused troubleshooting by a crop expert.
+        
+        Good examples:
+        - "मेरी गेहूं की पूरी फसल पीली हो रही है और पत्तियों पर दाग हैं।"
+        - "दवाई डालने के बाद भी कीड़े कम नहीं हो रहे।"
+        - "मेरी फसल अचानक सूखने लगी है।"
+        
+        Do NOT use for:
+        - Weather queries
+        - Mandi prices
+        - Generic farming questions
+        
+        Args:
+            crop: Crop name (e.g., "wheat", "rice", "cotton")
+            problem_description: Detailed description of the crop problem
+            farmer_name: Farmer's name if known
+            district: District name if known
+        
+        Returns:
+            Handoff status and message
+        """
+        logger.info(f"[Handoff] Initiating handoff to Crop Specialist for {crop} problem: {problem_description[:50]}...")
+        
+        # Before handing off, tell the farmer
+        handoff_message = (
+            "ये थोड़ा specific crop issue लग रहा है। "
+            "मैं आपको अपने crop specialist से connect करती हूँ। "
+            "एक पल रुकिए।"
+        )
+        
+        try:
+            await ctx.say(handoff_message)
+        except Exception as e:
+            logger.warning(f"[Handoff] Could not announce handoff to farmer: {e}")
+        
+        # Return handoff context for the specialist
+        context = {
+            "status": "handoff_initiated",
+            "agent": "crop_specialist",
+            "crop": crop,
+            "problem": problem_description,
+            "farmer_name": farmer_name or "Farmer",
+            "district": district,
+            "language": "hi",  # Keep existing language
+            "original_call": True,  # This is part of the same call
+            "continue_context": True  # Continue the existing conversation
+        }
+        
+        logger.info(f"[Handoff] Context prepared for specialist: crop={crop}, farmer_name={farmer_name}")
+        
+        return str(context)

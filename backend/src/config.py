@@ -34,10 +34,15 @@ SILENCE_REPROMPT_2 = (
 )
 
 # ========================= VOICE CONFIGURATION =========================
-# Murf TTS voice settings
+# Main Kisan Mitra - Female voice
 TTS_VOICE = "anisha"  # Hindi (India) female voice - Anisha (more natural, supports multiple Indian languages)
 TTS_STYLE = "Conversation"  # Natural conversation style with emotion
 TTS_TEXT_PACING = True
+
+# Crop Specialist - Male voice (Day 9 feature)
+CROP_SPECIALIST_TTS_VOICE = "samar"  # Indian English male voice - Samar
+CROP_SPECIALIST_TTS_STYLE = "Conversation"  # Same conversation style
+CROP_SPECIALIST_TTS_PACING = True
 
 # STT (Speech-to-Text) settings
 STT_MODEL = "nova-3"
