@@ -124,6 +124,38 @@ class KisanMitraAssistant(Agent):
             elif self.is_weather_alert:
                 logger.info(f"[Assistant] This is an OUTBOUND weather alert call")
     
+    def get_system_prompt(self) -> str:
+        """
+        Get the system prompt for this agent, with optional crop context injection.
+        
+        If in crop specialist mode, injects crop-focused instructions.
+        Otherwise returns standard Kisan Mitra prompt.
+        """
+        from .crop_context import get_crop_context_manager
+        
+        base_prompt = get_system_prompt()
+        
+        # Check if we're in crop specialist mode
+        crop_context_mgr = get_crop_context_manager()
+        if crop_context_mgr.is_in_specialist_mode():
+            context = crop_context_mgr.get_context_for_prompt()
+            if context:
+                # Inject specialist instructions at the top
+                specialist_injection = (
+                    f"🌾 CROP SPECIALIST MODE ACTIVE 🌾\n\n"
+                    f"You are currently in Crop Problem Specialist mode.\n"
+                    f"Focus on: {context['crop']} problem\n"
+                    f"Issue: {context['problem']}\n"
+                    f"Farmer: {context['farmer_name']}\n\n"
+                    f"Scope: ONLY discuss this specific crop problem.\n"
+                    f"If farmer asks about weather or prices, note it and suggest coming back to crop problem.\n"
+                    f"Goal: Help them understand the problem and potential solutions.\n"
+                    f"When issue is resolved, offer to hand them back to main assistant.\n\n"
+                )
+                base_prompt = specialist_injection + base_prompt
+        
+        return base_prompt
+    
     @function_tool
     async def get_weather(
         self,
@@ -595,6 +627,8 @@ class KisanMitraAssistant(Agent):
                 "status": "error",
                 "message": "Server error creating escalation"
             })
+    
+    @function_tool
     async def handoff_to_crop_specialist(
         self,
         ctx: RunContext,
@@ -630,31 +664,99 @@ class KisanMitraAssistant(Agent):
         """
         logger.info(f"[Handoff] Initiating handoff to Crop Specialist for {crop} problem: {problem_description[:50]}...")
         
-        # Before handing off, tell the farmer
-        handoff_message = (
-            "ये थोड़ा specific crop issue लग रहा है। "
-            "मैं आपको अपने crop specialist से connect करती हूँ। "
-            "एक पल रुकिए।"
-        )
+        try:
+            from .crop_context import get_crop_context_manager
+            
+            # Start crop specialist mode with context manager
+            crop_context_mgr = get_crop_context_manager()
+            crop_context = crop_context_mgr.start_crop_discussion(
+                crop=crop,
+                problem_description=problem_description,
+                farmer_name=farmer_name,
+                district=district
+            )
+            
+            # Announce handoff to farmer
+            handoff_message = (
+                f"ठीक है, {farmer_name or 'आप'}। "
+                f"मैं आपको फसल विशेषज्ञ से जोड़ देती हूँ जो {crop} की समस्याओं में माहिर हैं। "
+                f"एक पल रुकिए।"
+            )
+            
+            try:
+                await ctx.say(handoff_message)
+            except Exception as e:
+                logger.warning(f"[Handoff] Could not announce handoff to farmer: {e}")
+            
+            logger.info(f"[Handoff] Successfully activated crop specialist mode for crop={crop}, farmer={farmer_name}")
+            
+            # Return success
+            return str({
+                "status": "handoff_success",
+                "mode": "crop_specialist",
+                "crop": crop,
+                "farmer_name": farmer_name or "Farmer",
+                "message": "Crop specialist mode activated. Continuing conversation..."
+            })
+            
+        except Exception as e:
+            logger.error(f"[Handoff] Error during handoff: {e}", exc_info=True)
+            return str({
+                "status": "handoff_failed",
+                "error": str(e),
+                "message": "मुझे विशेषज्ञ मोड में स्विच करने में समस्या आ रही है। कृपया फिर से कोशिश करें।"
+            })
+    
+    @function_tool
+    async def handback_to_kisan_mitra(
+        self,
+        ctx: RunContext,
+    ) -> str:
+        """
+        Hand back the conversation to the main Kisan Mitra assistant.
+        
+        Use this when the crop specialist has resolved the problem or
+        when the farmer wants to switch back to the main assistant.
+        
+        Returns:
+            Handback status and message
+        """
+        logger.info("[Handback] Initiating handback to Kisan Mitra main mode")
         
         try:
-            await ctx.say(handoff_message)
+            from .crop_context import get_crop_context_manager
+            
+            # End crop specialist mode
+            crop_context_mgr = get_crop_context_manager()
+            ended_context = crop_context_mgr.end_crop_discussion()
+            
+            if ended_context:
+                crop = ended_context.crop
+                logger.info(f"[Handback] Ended crop specialist mode for crop={crop}")
+            
+            # Announce handback to farmer
+            handback_message = (
+                "अच्छा बढ़िया। अब आप मुख्य सहायक के साथ बात कर रहे हैं। "
+                "क्या मैं आपकी कोई और मदद कर सकती हूँ?"
+            )
+            
+            try:
+                await ctx.say(handback_message)
+            except Exception as e:
+                logger.warning(f"[Handback] Could not announce handback to farmer: {e}")
+            
+            logger.info("[Handback] Successfully deactivated crop specialist mode")
+            
+            # Return success
+            return str({
+                "status": "handback_success",
+                "mode": "kisan_mitra_main",
+                "message": "Returned to main Kisan Mitra mode"
+            })
+            
         except Exception as e:
-            logger.warning(f"[Handoff] Could not announce handoff to farmer: {e}")
-        
-        # Return handoff context for the specialist
-        context = {
-            "status": "handoff_initiated",
-            "agent": "crop_specialist",
-            "crop": crop,
-            "problem": problem_description,
-            "farmer_name": farmer_name or "Farmer",
-            "district": district,
-            "language": "hi",  # Keep existing language
-            "original_call": True,  # This is part of the same call
-            "continue_context": True  # Continue the existing conversation
-        }
-        
-        logger.info(f"[Handoff] Context prepared for specialist: crop={crop}, farmer_name={farmer_name}")
-        
-        return str(context)
+            logger.error(f"[Handback] Error during handback: {e}", exc_info=True)
+            return str({
+                "status": "handback_failed",
+                "error": str(e)
+            })
