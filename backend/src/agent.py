@@ -6,22 +6,14 @@ This module orchestrates the voice pipeline, handles latency tracking,
 silence detection, and response post-processing for optimal voice UX.
 """
 
+# ===== CRITICAL: Import logging patch FIRST before anything else =====
+# This must be the absolute first import to patch logging.Logger.trace()
+# before LiveKit creates any loggers
+import _logging_patch  # noqa: F401
+
 import sys
 import asyncio
 import logging
-
-# ===== CRITICAL: Patch logging.Logger FIRST before LiveKit imports =====
-# LiveKit's audio_recognition calls logger.trace() which doesn't exist in stdlib
-# This must happen BEFORE any other imports
-if not hasattr(logging.Logger, 'trace'):
-    def _trace(self, message, *args, **kwargs):
-        """Trace level logging - delegates to DEBUG"""
-        if self.isEnabledFor(logging.DEBUG):
-            self._log(logging.DEBUG, message, args, **kwargs)
-    
-    logging.Logger.trace = _trace
-
-# Import rest of modules AFTER patching
 import uuid
 import time
 from pathlib import Path
