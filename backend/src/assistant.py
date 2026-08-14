@@ -128,10 +128,15 @@ class KisanMitraAssistant(Agent):
         """
         Get the system prompt for this agent, with optional crop context injection.
         
-        If in crop specialist mode, injects crop-focused instructions.
+        If in crop specialist mode, injects crop-focused instructions with introduction.
         Otherwise returns standard Kisan Mitra prompt.
         """
-        from .crop_context import get_crop_context_manager
+        try:
+            from .crop_context import get_crop_context_manager
+            from .prompts.crop_specialist_prompt import get_crop_specialist_instructions
+        except (ImportError, ValueError):
+            from crop_context import get_crop_context_manager
+            from prompts.crop_specialist_prompt import get_crop_specialist_instructions
         
         base_prompt = get_system_prompt()
         
@@ -140,19 +145,13 @@ class KisanMitraAssistant(Agent):
         if crop_context_mgr.is_in_specialist_mode():
             context = crop_context_mgr.get_context_for_prompt()
             if context:
-                # Inject specialist instructions at the top
-                specialist_injection = (
-                    f"🌾 CROP SPECIALIST MODE ACTIVE 🌾\n\n"
-                    f"You are currently in Crop Problem Specialist mode.\n"
-                    f"Focus on: {context['crop']} problem\n"
-                    f"Issue: {context['problem']}\n"
-                    f"Farmer: {context['farmer_name']}\n\n"
-                    f"Scope: ONLY discuss this specific crop problem.\n"
-                    f"If farmer asks about weather or prices, note it and suggest coming back to crop problem.\n"
-                    f"Goal: Help them understand the problem and potential solutions.\n"
-                    f"When issue is resolved, offer to hand them back to main assistant.\n\n"
+                # Use the proper specialist prompt with introduction
+                specialist_prompt = get_crop_specialist_instructions(
+                    crop=context['crop'],
+                    problem=context['problem'],
+                    farmer_name=context['farmer_name']
                 )
-                base_prompt = specialist_injection + base_prompt
+                base_prompt = specialist_prompt + base_prompt
         
         return base_prompt
     
@@ -676,17 +675,20 @@ class KisanMitraAssistant(Agent):
                 district=district
             )
             
-            # Announce handoff to farmer
-            handoff_message = (
+            # Announce transition to specialist
+            transition_message = (
                 f"ठीक है, {farmer_name or 'आप'}। "
-                f"मैं आपको फसल विशेषज्ञ से जोड़ देती हूँ जो {crop} की समस्याओं में माहिर हैं। "
-                f"एक पल रुकिए।"
+                f"आपकी {crop} की यह समस्या बहुत गंभीर लग रही है। "
+                f"एक पल रुकिए, मैं एक कृषि विशेषज्ञ को आपके पास भेज रही हूँ।"
             )
             
             try:
-                await ctx.say(handoff_message)
+                await ctx.say(transition_message)
             except Exception as e:
-                logger.warning(f"[Handoff] Could not announce handoff to farmer: {e}")
+                logger.warning(f"[Handoff] Could not announce transition: {e}")
+            
+            # Specialist introduction (will be in next agent response due to prompt injection)
+            # The specialist prompt will automatically trigger this introduction
             
             logger.info(f"[Handoff] Successfully activated crop specialist mode for crop={crop}, farmer={farmer_name}")
             
@@ -696,7 +698,7 @@ class KisanMitraAssistant(Agent):
                 "mode": "crop_specialist",
                 "crop": crop,
                 "farmer_name": farmer_name or "Farmer",
-                "message": "Crop specialist mode activated. Continuing conversation..."
+                "message": "Crop specialist mode activated. Specialist introduction will follow."
             })
             
         except Exception as e:
@@ -724,7 +726,10 @@ class KisanMitraAssistant(Agent):
         logger.info("[Handback] Initiating handback to Kisan Mitra main mode")
         
         try:
-            from .crop_context import get_crop_context_manager
+            try:
+                from .crop_context import get_crop_context_manager
+            except (ImportError, ValueError):
+                from crop_context import get_crop_context_manager
             
             # End crop specialist mode
             crop_context_mgr = get_crop_context_manager()
@@ -734,9 +739,11 @@ class KisanMitraAssistant(Agent):
                 crop = ended_context.crop
                 logger.info(f"[Handback] Ended crop specialist mode for crop={crop}")
             
-            # Announce handback to farmer
+            # Announce handback and reintroduce main assistant
             handback_message = (
-                "अच्छा बढ़िया। अब आप मुख्य सहायक के साथ बात कर रहे हैं। "
+                "बहुत अच्छा! आपकी समस्या समझ में आ गई। "
+                "अब मैं किसान मित्र हूँ, आपका मुख्य सहायक। "
+                "मैं आपको मौसम, मंडी भाव, या अन्य खेती की जानकारी दे सकती हूँ। "
                 "क्या मैं आपकी कोई और मदद कर सकती हूँ?"
             )
             

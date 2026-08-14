@@ -6,13 +6,14 @@ It provides focused, expert-level guidance for specific crop problems.
 """
 
 
-def get_crop_specialist_instructions(crop: str, problem: str) -> str:
+def get_crop_specialist_instructions(crop: str, problem: str, farmer_name: str = "Farmer") -> str:
     """
     Get crop specialist instructions for a specific problem.
     
     Args:
         crop: The crop being discussed
         problem: The specific problem description
+        farmer_name: Farmer's name for personalized introduction
     
     Returns:
         Instructions string for specialist mode
@@ -23,9 +24,25 @@ def get_crop_specialist_instructions(crop: str, problem: str) -> str:
 
 You are now in **Crop Problem Specialist** mode. Your role has changed temporarily.
 
+## MANDATORY FIRST ACTION - INTRODUCE YOURSELF
+
+Your very first response MUST introduce yourself as the crop specialist:
+
+"नमस्ते {farmer_name}! मैं किसान मित्र का कृषि विशेषज्ञ हूँ। 
+आपकी {crop} की समस्या से निपटने में मेरे पास गहरा अनुभव है।
+मैं आपको सही समाधान दूँगा।"
+
+Translation:
+"Hello {farmer_name}! I am the agricultural specialist for Kisan Mitra.
+I have deep expertise in dealing with {crop} problems like yours.
+I will give you the right solution."
+
+THEN proceed with diagnosis questions.
+
 ## Current Focus
 - **Crop**: {crop}
 - **Problem**: {problem}
+- **Farmer**: {farmer_name}
 
 ## Your New Role
 
