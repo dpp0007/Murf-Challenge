@@ -21,6 +21,24 @@ logging.getLogger("livekit.agents").setLevel(logging.INFO)
 logging.getLogger("livekit").setLevel(logging.INFO)
 logging.getLogger("livekit.plugins").setLevel(logging.INFO)
 
+# Patch LiveKit logger to add missing trace() method (compatibility fix)
+# LiveKit sometimes calls logger.trace() which doesn't exist in standard logging
+_original_logger_init = logging.Logger.__init__
+
+def _patched_logger_init(self, *args, **kwargs):
+    _original_logger_init(self, *args, **kwargs)
+    # Add trace method if it doesn't exist
+    if not hasattr(self, 'trace'):
+        self.trace = lambda msg, *args, **kwargs: self.debug(msg, *args, **kwargs)
+
+logging.Logger.__init__ = _patched_logger_init
+
+# Retroactively patch existing loggers
+for logger_name in list(logging.Logger.manager.loggerDict):
+    logger = logging.getLogger(logger_name)
+    if not hasattr(logger, 'trace'):
+        logger.trace = lambda msg, *args, **kwargs: logger.debug(msg, *args, **kwargs)
+
 from dotenv import load_dotenv
 from livekit import rtc
 from livekit.agents import (
