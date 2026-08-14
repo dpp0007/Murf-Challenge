@@ -17,7 +17,10 @@ from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 from enum import Enum
 
-from .weather_service import WeatherService
+try:
+    from .weather_service import WeatherService
+except (ImportError, ValueError):
+    from services.weather_service import WeatherService
 from database.farmer_repository import get_farmer_repository
 from livekit import api
 

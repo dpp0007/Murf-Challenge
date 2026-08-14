@@ -9,7 +9,10 @@ silence detection, and response post-processing for optimal voice UX.
 # ===== CRITICAL: Import logging patch FIRST before anything else =====
 # This must be the absolute first import to patch logging.Logger.trace()
 # before LiveKit creates any loggers
-from . import _logging_patch  # noqa: F401
+try:
+    from . import _logging_patch  # noqa: F401
+except ImportError:
+    import _logging_patch  # noqa: F401
 
 import sys
 import asyncio
@@ -111,7 +114,10 @@ def prewarm(proc: JobProcess):
     
     # Initialize Discord bot in background (for escalations)
     try:
-        from services.discord_service import get_discord_service
+        try:
+            from .services.discord_service import get_discord_service
+        except ImportError:
+            from services.discord_service import get_discord_service
         discord_svc = get_discord_service()
         if discord_svc.enabled:
             logger.info("[Discord] Initializing Discord bot during prewarm")

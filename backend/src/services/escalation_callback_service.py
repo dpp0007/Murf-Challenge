@@ -10,9 +10,14 @@ import os
 import asyncio
 from typing import Optional, Dict, Any
 
-from ..database.escalation_repository import get_escalation_repository
-from ..database.farmer_repository import get_farmer_repository
-from .outbound_weather_service import get_outbound_weather_service
+try:
+    from ..database.escalation_repository import get_escalation_repository
+    from ..database.farmer_repository import get_farmer_repository
+    from .outbound_weather_service import get_outbound_weather_service
+except (ImportError, ValueError):
+    from database.escalation_repository import get_escalation_repository
+    from database.farmer_repository import get_farmer_repository
+    from services.outbound_weather_service import get_outbound_weather_service
 
 logger = logging.getLogger("escalation_callback_service")
 

@@ -21,10 +21,14 @@ from datetime import datetime, timezone
 try:
     from ..database.escalation_repository import get_escalation_repository
     from .escalation_callback_service import get_escalation_callback_service
-except ImportError:
+except (ImportError, ValueError):
     # Fallback for when running from different contexts
-    get_escalation_repository = None
-    get_escalation_callback_service = None
+    try:
+        from database.escalation_repository import get_escalation_repository
+        from services.escalation_callback_service import get_escalation_callback_service
+    except (ImportError, ValueError):
+        get_escalation_repository = None
+        get_escalation_callback_service = None
 
 logger = logging.getLogger("discord_service")
 

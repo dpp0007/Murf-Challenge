@@ -12,8 +12,12 @@ import logging
 from typing import Optional, Dict, Any
 from enum import Enum
 
-from ..database.escalation_repository import get_escalation_repository, Escalation
-from ..database.farmer_repository import get_farmer_repository
+try:
+    from ..database.escalation_repository import get_escalation_repository, Escalation
+    from ..database.farmer_repository import get_farmer_repository
+except (ImportError, ValueError):
+    from database.escalation_repository import get_escalation_repository, Escalation
+    from database.farmer_repository import get_farmer_repository
 
 logger = logging.getLogger("escalation_service")
 

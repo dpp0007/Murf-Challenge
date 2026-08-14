@@ -16,7 +16,7 @@ try:
     from .services.mandi_service import get_mandi_service
     from .tools.farmer_memory import get_farmer_memory_tools
     from .tools.escalation_tools import get_escalation_tools
-except ImportError:
+except (ImportError, ValueError):
     from prompts import get_system_prompt
     from config import ASSISTANT_NAME
     from services.weather_service import WeatherService
