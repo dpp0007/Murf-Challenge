@@ -384,10 +384,10 @@ async def _kisan_mitra_session_impl(ctx: JobContext):
         if message:
             # Record task type for SIP calls (weather alert or escalation callback)
             if is_escalation_callback:
-                tracker.record_task("escalation_callback")
+                tracker.record_task_started("escalation_callback")
                 logger.info(f"[Analytics] Task type set to: escalation_callback")
             elif is_weather_alert_call:
-                tracker.record_task("weather_alert")
+                tracker.record_task_started("weather_alert")
                 logger.info(f"[Analytics] Task type set to: weather_alert")
             
             # IMPROVED PARSING: Split message into greeting + content more robustly
