@@ -664,7 +664,10 @@ class KisanMitraAssistant(Agent):
         logger.info(f"[Handoff] Initiating handoff to Crop Specialist for {crop} problem: {problem_description[:50]}...")
         
         try:
-            from .crop_context import get_crop_context_manager
+            try:
+                from .crop_context import get_crop_context_manager
+            except (ImportError, ValueError):
+                from crop_context import get_crop_context_manager
             
             # Start crop specialist mode with context manager
             crop_context_mgr = get_crop_context_manager()
