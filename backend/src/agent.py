@@ -9,7 +9,7 @@ silence detection, and response post-processing for optimal voice UX.
 # ===== CRITICAL: Import logging patch FIRST before anything else =====
 # This must be the absolute first import to patch logging.Logger.trace()
 # before LiveKit creates any loggers
-import _logging_patch  # noqa: F401
+from . import _logging_patch  # noqa: F401
 
 import sys
 import asyncio

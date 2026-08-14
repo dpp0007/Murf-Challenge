@@ -9,11 +9,11 @@ import logging
 from typing import Optional
 from livekit.agents import function_tool, RunContext
 
-from services.escalation_service import (
+from ..services.escalation_service import (
     get_escalation_service,
     EscalationReason,
 )
-from database.farmer_repository import get_farmer_repository
+from ..database.farmer_repository import get_farmer_repository
 
 logger = logging.getLogger("escalation_tools")
 

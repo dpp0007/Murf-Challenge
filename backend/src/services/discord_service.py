@@ -19,8 +19,8 @@ from datetime import datetime, timezone
 
 # Import services and database modules at module level to avoid import issues in async contexts
 try:
-    from database.escalation_repository import get_escalation_repository
-    from services.escalation_callback_service import get_escalation_callback_service
+    from ..database.escalation_repository import get_escalation_repository
+    from .escalation_callback_service import get_escalation_callback_service
 except ImportError:
     # Fallback for when running from different contexts
     get_escalation_repository = None

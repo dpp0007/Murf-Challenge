@@ -13,7 +13,7 @@ import logging
 from typing import Optional, Dict, Any
 from livekit.agents import function_tool, RunContext
 
-from database.farmer_repository import get_farmer_repository, FarmerProfile
+from ..database.farmer_repository import get_farmer_repository, FarmerProfile
 
 logger = logging.getLogger("farmer_memory")
 

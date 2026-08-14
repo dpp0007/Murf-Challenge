@@ -11,7 +11,7 @@ Handles:
 import logging
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
-from database.analytics_repository import get_analytics_repository
+from ..database.analytics_repository import get_analytics_repository
 
 logger = logging.getLogger("analytics_service")
 
