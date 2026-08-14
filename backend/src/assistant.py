@@ -134,7 +134,7 @@ class KisanMitraAssistant(Agent):
         try:
             from .crop_context import get_crop_context_manager
             from .prompts.crop_specialist_prompt import get_crop_specialist_instructions
-        except (ImportError, ValueError):
+        except Exception:  # Catch ALL exceptions from relative imports
             from crop_context import get_crop_context_manager
             from prompts.crop_specialist_prompt import get_crop_specialist_instructions
         
@@ -666,7 +666,7 @@ class KisanMitraAssistant(Agent):
         try:
             try:
                 from .crop_context import get_crop_context_manager
-            except (ImportError, ValueError):
+            except Exception:  # Catch ALL exceptions from relative import
                 from crop_context import get_crop_context_manager
             
             # Start crop specialist mode with context manager
@@ -731,7 +731,7 @@ class KisanMitraAssistant(Agent):
         try:
             try:
                 from .crop_context import get_crop_context_manager
-            except (ImportError, ValueError):
+            except Exception:  # Catch ALL exceptions from relative import
                 from crop_context import get_crop_context_manager
             
             # End crop specialist mode
