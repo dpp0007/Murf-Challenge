@@ -15,8 +15,14 @@ import logging
 import time
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
-from services.analytics_service import get_analytics_service
-from database.analytics_repository import get_analytics_repository
+
+# Handle both relative and absolute imports for worker process compatibility
+try:
+    from .services.analytics_service import get_analytics_service
+    from .database.analytics_repository import get_analytics_repository
+except (ImportError, ValueError):
+    from services.analytics_service import get_analytics_service
+    from database.analytics_repository import get_analytics_repository
 
 logger = logging.getLogger("call_tracker")
 
@@ -211,7 +217,10 @@ def get_or_create_tracker(call_id: str, channel: str = "browser", language: str 
 
 def get_tracker(call_id: str) -> Optional[CallTracker]:
     """Get existing tracker for a call."""
-    return _active_trackers.get(call_id)
+    tracker = _active_trackers.get(call_id)
+    if not tracker:
+        logger.debug(f"[CallTracker] Tracker not found: {call_id}. Active trackers: {list(_active_trackers.keys())}")
+    return tracker
 
 
 def remove_tracker(call_id: str) -> None:

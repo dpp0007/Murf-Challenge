@@ -221,7 +221,7 @@ async def _kisan_mitra_session_impl(ctx: JobContext):
         
         # Text-to-Speech: Converts responses to natural voice
         tts=murf.TTS(
-            voice=TTS_VOICE,  # Anisha - Natural Hindi female voice
+            voice=TTS_VOICE,  # Anisha - Natural Hindi female voice (main agent)
             style=TTS_STYLE,
             tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=MIN_SENTENCE_LENGTH),
             text_pacing=TTS_TEXT_PACING

@@ -7,6 +7,7 @@ Includes function tools for weather and mandi price queries.
 import logging
 from typing import Optional
 from livekit.agents import Agent, function_tool, RunContext
+from livekit.plugins import murf  # For creating TTS instances at runtime
 
 # Handle both relative and absolute imports
 try:
@@ -678,11 +679,11 @@ class KisanMitraAssistant(Agent):
                 district=district
             )
             
-            # Announce transition to specialist
+            # Announce transition to specialist with detailed explanation of value
+            # NOTE: Main agent already said this in Anisha's voice
+            # Now just switch voice to specialist - no announcement needed here
             transition_message = (
-                f"ठीक है, {farmer_name or 'आप'}। "
-                f"आपकी {crop} की यह समस्या बहुत गंभीर लग रही है। "
-                f"एक पल रुकिए, मैं एक कृषि विशेषज्ञ को आपके पास भेज रही हूँ।"
+                f"आपकी समस्या अब सुपर स्पेशलिस्ट को सौंप रही हूँ।"
             )
             
             try:
@@ -690,8 +691,30 @@ class KisanMitraAssistant(Agent):
             except Exception as e:
                 logger.warning(f"[Handoff] Could not announce transition: {e}")
             
-            # Specialist introduction (will be in next agent response due to prompt injection)
-            # The specialist prompt will automatically trigger this introduction
+            # SWITCH TTS VOICE TO SPECIALIST (MALE SAMAR)
+            # Use LiveKit's native update_options() to switch TTS at runtime
+            try:
+                try:
+                    from .config import CROP_SPECIALIST_TTS_VOICE, TTS_STYLE, TTS_TEXT_PACING
+                except ImportError:
+                    from config import CROP_SPECIALIST_TTS_VOICE, TTS_STYLE, TTS_TEXT_PACING
+                
+                # Create new Murf TTS instance with specialist voice
+                specialist_tts = murf.TTS(
+                    voice=CROP_SPECIALIST_TTS_VOICE,  # "samar" - male specialist
+                    style=TTS_STYLE,
+                    text_pacing=TTS_TEXT_PACING
+                )
+                
+                # Apply to active agent using LiveKit's native update_options()
+                self.update_options(tts=specialist_tts)
+                
+                logger.info(f"[Handoff] TTS voice switched to '{CROP_SPECIALIST_TTS_VOICE}' (specialist mode)")
+                
+            except Exception as e:
+                logger.error(f"[Handoff] Failed to switch TTS voice: {e}", exc_info=True)
+                # Continue anyway - specialist mode still works with main voice as fallback
+                logger.warning("[Handoff] Continuing with main voice instead of specialist voice")
             
             logger.info(f"[Handoff] Successfully activated crop specialist mode for crop={crop}, farmer={farmer_name}")
             
@@ -701,7 +724,7 @@ class KisanMitraAssistant(Agent):
                 "mode": "crop_specialist",
                 "crop": crop,
                 "farmer_name": farmer_name or "Farmer",
-                "message": "Crop specialist mode activated. Specialist introduction will follow."
+                "message": "Crop specialist mode activated. Specialist introduction will follow in specialist voice."
             })
             
         except Exception as e:
@@ -742,12 +765,10 @@ class KisanMitraAssistant(Agent):
                 crop = ended_context.crop
                 logger.info(f"[Handback] Ended crop specialist mode for crop={crop}")
             
-            # Announce handback and reintroduce main assistant
+            # Announce handback and reintroduce main assistant (still in SPECIALIST voice)
             handback_message = (
-                "बहुत अच्छा! आपकी समस्या समझ में आ गई। "
-                "अब मैं किसान मित्र हूँ, आपका मुख्य सहायक। "
-                "मैं आपको मौसम, मंडी भाव, या अन्य खेती की जानकारी दे सकती हूँ। "
-                "क्या मैं आपकी कोई और मदद कर सकती हूँ?"
+                "उम्मीद है कि specialist के जवाब से आपकी समस्या हल हो गई। "
+                "बताइए अब मैं आपकी और कैसे मदद कर सकती हूँ?"
             )
             
             try:
@@ -755,13 +776,38 @@ class KisanMitraAssistant(Agent):
             except Exception as e:
                 logger.warning(f"[Handback] Could not announce handback to farmer: {e}")
             
+            # SWITCH TTS VOICE BACK TO MAIN (FEMALE ANISHA)
+            # Use LiveKit's native update_options() to switch TTS at runtime
+            try:
+                try:
+                    from .config import TTS_VOICE, TTS_STYLE, TTS_TEXT_PACING
+                except ImportError:
+                    from config import TTS_VOICE, TTS_STYLE, TTS_TEXT_PACING
+                
+                # Create new Murf TTS instance with main voice
+                main_tts = murf.TTS(
+                    voice=TTS_VOICE,  # "anisha" - female main agent
+                    style=TTS_STYLE,
+                    text_pacing=TTS_TEXT_PACING
+                )
+                
+                # Apply to active agent using LiveKit's native update_options()
+                self.update_options(tts=main_tts)
+                
+                logger.info(f"[Handback] TTS voice switched back to '{TTS_VOICE}' (main mode)")
+                
+            except Exception as e:
+                logger.error(f"[Handback] Failed to switch TTS voice back: {e}", exc_info=True)
+                # Continue anyway - main mode still works with specialist voice as fallback
+                logger.warning("[Handback] Continuing with specialist voice instead of main voice")
+            
             logger.info("[Handback] Successfully deactivated crop specialist mode")
             
             # Return success
             return str({
                 "status": "handback_success",
                 "mode": "kisan_mitra_main",
-                "message": "Returned to main Kisan Mitra mode"
+                "message": "Returned to main Kisan Mitra mode with main voice restored"
             })
             
         except Exception as e:
