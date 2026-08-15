@@ -176,85 +176,46 @@ export function WeatherAlertButton() {
   const statusDisplay = getStatusDisplay();
 
   return (
-    <div className="space-y-4 w-full max-w-md">
-      {/* Weather Preview */}
-      {weather && (
-        <div className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl border border-blue-200 dark:border-blue-700 shadow-sm">
-          <div className="flex items-center justify-between mb-2">
-            <div className="font-semibold text-blue-900 dark:text-blue-100">
-              Weather Alert
-            </div>
-            <div className="text-2xl">🌤️</div>
-          </div>
-          
-          <div className="space-y-1 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-blue-700 dark:text-blue-300">{weather.district}</span>
-              <span className="text-2xl font-bold text-blue-900 dark:text-blue-100">
-                {weather.temperature}°C
-              </span>
-            </div>
-            
-            <div className="text-blue-600 dark:text-blue-400">
-              {weather.condition}
-            </div>
-            
-            {weather.precipitation !== undefined && (
-              <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
-                <span>💧 Rain chance:</span>
-                <span className="font-semibold">{weather.precipitation}%</span>
-              </div>
-            )}
-            
-            {weather.humidity !== undefined && (
-              <div className="text-xs text-blue-500 dark:text-blue-500">
-                Humidity: {weather.humidity}%
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Call Button */}
+    <div className="w-full max-w-[600px] space-y-2">
+      {/* Call Button - green pill matching reference design */}
       <button
         onClick={triggerCall}
         disabled={isDisabled()}
         className={`
-          w-full px-6 py-4 rounded-xl font-medium text-white
+          w-full px-6 py-4 rounded-full font-semibold text-white text-[16px]
           transition-all duration-200 transform
           disabled:opacity-60 disabled:cursor-not-allowed
           ${statusDisplay.color}
           ${!isDisabled() ? 'hover:scale-[1.02] active:scale-[0.98]' : ''}
-          shadow-lg
+          shadow-[0_12px_24px_-18px_rgba(27,94,32,0.45)]
+          flex items-center justify-center gap-3
         `}
       >
-        <div className="flex items-center justify-center gap-3">
-          <span className="text-2xl">{statusDisplay.icon}</span>
-          <span>{statusDisplay.text}</span>
-        </div>
+        <span className="text-[20px]">☁️</span>
+        <span>{statusDisplay.text}</span>
+        <span className="text-[20px]">→</span>
       </button>
-
-      {/* Error Display */}
-      {error && (
-        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg">
-          <div className="flex items-start gap-2">
-            <span className="text-red-600 dark:text-red-400 text-sm">⚠️</span>
-            <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
-          </div>
-        </div>
-      )}
 
       {/* Help Text */}
       {status === 'IDLE' && (
-        <div className="text-xs text-gray-500 dark:text-gray-400 text-center space-y-1">
-          <p>Click to receive a weather alert via Linphone</p>
-          <p className="text-gray-400 dark:text-gray-500">Make sure Linphone is open and logged in</p>
+        <div className="text-xs text-gray-600 text-center">
+          <p>Get a weather update on your phone via Linphone</p>
+        </div>
+      )}
+
+      {/* Error Display */}
+      {error && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-start gap-2">
+            <span className="text-red-600 text-sm">⚠️</span>
+            <p className="text-sm text-red-700">{error}</p>
+          </div>
         </div>
       )}
 
       {/* SIP Connection Info */}
       {(status === 'CONNECTING' || status === 'RINGING') && (
-        <div className="text-xs text-blue-600 dark:text-blue-400 text-center p-2 bg-blue-50 dark:bg-blue-900/20 rounded">
+        <div className="text-xs text-center p-2 bg-blue-50 rounded text-blue-700">
           Connecting via SIP to Linphone... Please make sure Linphone is running.
         </div>
       )}

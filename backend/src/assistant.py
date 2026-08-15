@@ -693,27 +693,52 @@ class KisanMitraAssistant(Agent):
             
             # SWITCH TTS VOICE TO SPECIALIST (MALE SAMAR)
             # Use LiveKit's native update_options() to switch TTS at runtime
+            voice_switch_success = False
             try:
                 try:
-                    from .config import CROP_SPECIALIST_TTS_VOICE, TTS_STYLE, TTS_TEXT_PACING
+                    from .config import CROP_SPECIALIST_TTS_VOICE, TTS_STYLE, TTS_TEXT_PACING, MURF_API_KEY
                 except ImportError:
-                    from config import CROP_SPECIALIST_TTS_VOICE, TTS_STYLE, TTS_TEXT_PACING
+                    from config import CROP_SPECIALIST_TTS_VOICE, TTS_STYLE, TTS_TEXT_PACING, MURF_API_KEY
                 
-                # Create new Murf TTS instance with specialist voice
-                specialist_tts = murf.TTS(
-                    voice=CROP_SPECIALIST_TTS_VOICE,  # "samar" - male specialist
-                    style=TTS_STYLE,
-                    text_pacing=TTS_TEXT_PACING
-                )
-                
-                # Apply to active agent using LiveKit's native update_options()
-                self.update_options(tts=specialist_tts)
-                
-                logger.info(f"[Handoff] TTS voice switched to '{CROP_SPECIALIST_TTS_VOICE}' (specialist mode)")
+                # Pre-check: Is MURF_API_KEY configured?
+                if not MURF_API_KEY:
+                    logger.warning("[Handoff] MURF_API_KEY not configured - voice switching disabled")
+                    # Tell farmer about the limitation
+                    try:
+                        await ctx.say(
+                            "मेरे तकनीकी कारणों से मैं आपको विशेषज्ञ की अलग आवाज़ नहीं दे पाई, "
+                            "लेकिन एक अनुभवी कृषि विशेषज्ञ आपकी मदद करेंगे। "
+                            "चलिए आगे बढ़ते हैं।"
+                        )
+                    except Exception as say_err:
+                        logger.warning(f"[Handoff] Could not announce voice limitation: {say_err}")
+                else:
+                    # Create new Murf TTS instance with specialist voice
+                    specialist_tts = murf.TTS(
+                        voice=CROP_SPECIALIST_TTS_VOICE,  # "samar" - male specialist
+                        style=TTS_STYLE,
+                        text_pacing=TTS_TEXT_PACING
+                    )
+                    
+                    # Apply to active agent using LiveKit's native update_options()
+                    self.update_options(tts=specialist_tts)
+                    voice_switch_success = True
+                    
+                    logger.info(f"[Handoff] TTS voice switched to '{CROP_SPECIALIST_TTS_VOICE}' (specialist mode)")
                 
             except Exception as e:
                 logger.error(f"[Handoff] Failed to switch TTS voice: {e}", exc_info=True)
-                # Continue anyway - specialist mode still works with main voice as fallback
+                # Tell farmer about the failure gracefully
+                try:
+                    if not voice_switch_success:
+                        await ctx.say(
+                            "विशेषज्ञ आपकी मदद के लिए तैयार हैं। "
+                            "हालांकि एक तकनीकी कारण से आवाज़ अलग नहीं हो पाई, "
+                            "आप विशेषज्ञ की सलाह सुन सकते हैं।"
+                        )
+                except Exception as fallback_err:
+                    logger.warning(f"[Handoff] Could not announce fallback: {fallback_err}")
+                
                 logger.warning("[Handoff] Continuing with main voice instead of specialist voice")
             
             logger.info(f"[Handoff] Successfully activated crop specialist mode for crop={crop}, farmer={farmer_name}")
@@ -778,27 +803,50 @@ class KisanMitraAssistant(Agent):
             
             # SWITCH TTS VOICE BACK TO MAIN (FEMALE ANISHA)
             # Use LiveKit's native update_options() to switch TTS at runtime
+            voice_switch_success = False
             try:
                 try:
-                    from .config import TTS_VOICE, TTS_STYLE, TTS_TEXT_PACING
+                    from .config import TTS_VOICE, TTS_STYLE, TTS_TEXT_PACING, MURF_API_KEY
                 except ImportError:
-                    from config import TTS_VOICE, TTS_STYLE, TTS_TEXT_PACING
+                    from config import TTS_VOICE, TTS_STYLE, TTS_TEXT_PACING, MURF_API_KEY
                 
-                # Create new Murf TTS instance with main voice
-                main_tts = murf.TTS(
-                    voice=TTS_VOICE,  # "anisha" - female main agent
-                    style=TTS_STYLE,
-                    text_pacing=TTS_TEXT_PACING
-                )
-                
-                # Apply to active agent using LiveKit's native update_options()
-                self.update_options(tts=main_tts)
-                
-                logger.info(f"[Handback] TTS voice switched back to '{TTS_VOICE}' (main mode)")
+                # Pre-check: Is MURF_API_KEY configured?
+                if not MURF_API_KEY:
+                    logger.warning("[Handback] MURF_API_KEY not configured - voice switching disabled")
+                    # Tell farmer about the limitation
+                    try:
+                        await ctx.say(
+                            "मैं अब आपकी सामान्य सवालों में मदद कर सकती हूँ। "
+                            "हालांकि आवाज़ अलग नहीं हुई, आप पूरी तरह मेरी मदद पा सकते हैं।"
+                        )
+                    except Exception as say_err:
+                        logger.warning(f"[Handback] Could not announce voice limitation: {say_err}")
+                else:
+                    # Create new Murf TTS instance with main voice
+                    main_tts = murf.TTS(
+                        voice=TTS_VOICE,  # "anisha" - female main agent
+                        style=TTS_STYLE,
+                        text_pacing=TTS_TEXT_PACING
+                    )
+                    
+                    # Apply to active agent using LiveKit's native update_options()
+                    self.update_options(tts=main_tts)
+                    voice_switch_success = True
+                    
+                    logger.info(f"[Handback] TTS voice switched back to '{TTS_VOICE}' (main mode)")
                 
             except Exception as e:
                 logger.error(f"[Handback] Failed to switch TTS voice back: {e}", exc_info=True)
-                # Continue anyway - main mode still works with specialist voice as fallback
+                # Tell farmer about the failure gracefully
+                try:
+                    if not voice_switch_success:
+                        await ctx.say(
+                            "मैं अब आपकी सहायता के लिए तैयार हूँ। "
+                            "कृपया अपना अगला सवाल पूछें।"
+                        )
+                except Exception as fallback_err:
+                    logger.warning(f"[Handback] Could not announce fallback: {fallback_err}")
+                
                 logger.warning("[Handback] Continuing with specialist voice instead of main voice")
             
             logger.info("[Handback] Successfully deactivated crop specialist mode")

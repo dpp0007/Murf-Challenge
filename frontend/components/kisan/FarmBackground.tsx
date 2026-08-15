@@ -8,8 +8,8 @@ export function FarmBackground() {
       className="fixed inset-0 z-0 select-none pointer-events-none overflow-hidden"
       aria-hidden="true"
     >
-      {/* Sky gradient — fills whole viewport, more cyan-blue */}
-      <div className="absolute inset-0 bg-gradient-to-b from-[#BFE3F2] via-[#D7EEF3] to-[#EAF6F7]" />
+      {/* Sky gradient — warm cream to soft beige, matching reference design */}
+      <div className="absolute inset-0 bg-gradient-to-b from-[#F5E6D3] via-[#F9F0E6] to-[#FBF5F0]" />
 
       {/*
         Farm Landscape SVG (square).

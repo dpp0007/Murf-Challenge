@@ -8,19 +8,32 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const query = url.search;
 
-    const backendUrl = `http://localhost:8080/api/analytics/summary${query}`;
-    console.log(`[Analytics Proxy] Fetching: ${backendUrl}`);
+    // Use 127.0.0.1 instead of localhost to ensure proper resolution in server context
+    const backendHost = process.env.BACKEND_URL || "http://127.0.0.1:8080";
+    const backendUrl = `${backendHost}/api/analytics/summary${query}`;
+    console.log(`[Analytics Proxy] Fetching from backend: ${backendUrl}`);
 
-    const response = await fetch(backendUrl, {
-      method: "GET",
-      headers: { "Content-Type": "application/json" },
-      cache: "no-store",
-    });
+    let response;
+    try {
+      response = await fetch(backendUrl, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        signal: AbortSignal.timeout(10000), // 10 second timeout
+      });
+    } catch (fetchError) {
+      console.error("[Analytics Proxy] Fetch error:", fetchError);
+      return NextResponse.json(
+        { error: "Failed to connect to backend", details: String(fetchError) },
+        { status: 503 }
+      );
+    }
 
     if (!response.ok) {
-      console.error(`[Analytics Proxy] Backend error: ${response.status}`);
+      const errorBody = await response.text();
+      console.error(`[Analytics Proxy] Backend error: ${response.status}`, errorBody);
       return NextResponse.json(
-        { error: `Backend error: ${response.status}` },
+        { error: `Backend error: ${response.status}`, body: errorBody },
         { status: response.status }
       );
     }
@@ -34,9 +47,10 @@ export async function GET(request: Request) {
       },
     });
   } catch (error) {
-    console.error("[Analytics Proxy] Error:", error);
+    console.error("[Analytics Proxy] Unexpected error:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: "Analytics proxy error", details: String(error) },
+      { error: "Analytics proxy error", details: errorMessage },
       { status: 500 }
     );
   }

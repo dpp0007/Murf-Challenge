@@ -11,6 +11,7 @@ import {
   type TrackReferenceOrPlaceholder,
 } from '@livekit/components-react';
 import type { LocalAudioTrack, RemoteAudioTrack } from 'livekit-client';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { FarmBackground } from './FarmBackground';
 import { KisanHeader } from './KisanHeader';
 import { ConversationPanel } from './ConversationPanel';
@@ -140,6 +141,7 @@ export function KisanMainView() {
   const messages = (rawMessages ?? []) as ReceivedMessage[];
   const { audioTrack } = useVoiceAssistant();
   const { localParticipant } = useLocalParticipant();
+  const { t } = useLanguage();
   const audioLevel = useAgentAudioLevel(audioTrack);
 
   const [hasStartedOnce, setHasStartedOnce] = useState(false);
@@ -256,42 +258,42 @@ export function KisanMainView() {
 
       {/* Layer 2: Main content */}
       <main
-        className="relative z-10 flex-1 w-full h-full overflow-hidden
-          pt-[68px] sm:pt-[84px] pb-3 sm:pb-5 px-3 sm:px-5 lg:px-6"
+        className="relative z-10 flex-1 w-full overflow-hidden flex flex-col items-center justify-center
+          pt-[68px] sm:pt-[84px] pb-4 sm:pb-6 px-3 sm:px-4"
       >
-        <div
-          className="relative h-full w-full max-w-[1280px] mx-auto flex flex-col items-center gap-4 sm:gap-5 xl:block"
-        >
-          
-          {/* Column 1 — Conversation (translucent, left side) */}
-          <div className="order-2 w-full flex justify-center xl:absolute xl:left-[5.5vw] xl:top-1/2 xl:w-[380px] xl:-translate-y-1/2 xl:justify-start xl:order-1">
+        <div className="w-full max-w-[900px] mx-auto">
+          {/* Two-column grid with cards */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-5 mb-5">
+            {/* Column 1 — Conversation (left side) */}
             <ConversationPanel messages={messages} canSend={isConnected} onSendMessage={handleSendMessage} />
+
+            {/* Column 2 — Voice control (right side) */}
+            <KisanVoiceCard
+              voiceState={voiceState}
+              audioLevel={audioLevel}
+              isMuted={isMuted}
+              canUseButton={canUseButton}
+              isConnected={isConnected}
+              onStartCall={handleStartCall}
+              onEndCall={handleDisconnect}
+              onToggleMic={handleToggleMic}
+            />
           </div>
 
-          {/* Column 2 — Voice control (center/right) */}
-          <div className="order-1 flex w-full justify-center xl:absolute xl:right-[8vw] xl:top-1/2 xl:w-[380px] xl:-translate-y-1/2 xl:order-2">
-            <div className="flex flex-col gap-4 w-full max-w-[380px]">
-              <KisanVoiceCard
-                voiceState={voiceState}
-                audioLevel={audioLevel}
-                isMuted={isMuted}
-                canUseButton={canUseButton}
-                isConnected={isConnected}
-                onStartCall={handleStartCall}
-                onEndCall={handleDisconnect}
-                onToggleMic={handleToggleMic}
-              />
-              
-              {/* Weather Alert Button - only show when not in active call */}
-              {!isConnected && !isConnecting && (
-                <div className="mt-2">
-                  <WeatherAlertButton />
-                </div>
-              )}
+          {/* Weather Alert Button - centered below */}
+          {!isConnected && !isConnecting && (
+            <div className="flex justify-center">
+              <WeatherAlertButton />
             </div>
-          </div>
+          )}
         </div>
       </main>
+
+      {/* Bottom left — Privacy indicator */}
+      <div className="fixed bottom-4 left-4 z-20 flex items-center gap-2 text-[12px] text-gray-600 pointer-events-none">
+        <span className="text-[10px]">✓</span>
+        <span>{t.privacyText || "Your data is private and secure"}</span>
+      </div>
 
       {/* Microphone error overlay */}
       {micError && (

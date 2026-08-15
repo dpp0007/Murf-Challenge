@@ -77,6 +77,7 @@ class Database:
                     user_id TEXT UNIQUE NOT NULL,
                     name TEXT,
                     language_preference TEXT DEFAULT 'hi',
+                    phone_number TEXT,
                     outbound_calls_enabled INTEGER DEFAULT 1,
                     created_at TEXT NOT NULL,
                     last_interaction TEXT NOT NULL

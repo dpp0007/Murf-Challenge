@@ -3,6 +3,14 @@ Configuration module for Kisan Mitra voice assistant.
 All configurable parameters are centralized here.
 """
 
+import os
+# Load environment variables from .env.local FIRST
+try:
+    from dotenv import load_dotenv
+    load_dotenv('.env.local')
+except ImportError:
+    pass
+
 # ========================= ASSISTANT CONFIGURATION =========================
 ASSISTANT_NAME = "Kisan Mitra"
 AGENT_NAME = "my-agent"
@@ -44,6 +52,19 @@ CROP_SPECIALIST_TTS_VOICE = "samar"  # Indian English male voice - Samar
 CROP_SPECIALIST_TTS_STYLE = "Conversation"  # Same conversation style
 CROP_SPECIALIST_TTS_PACING = True
 
+# Validate MURF API key for voice switching
+# If specialist voice switching is needed but MURF_API_KEY is missing, fail early
+MURF_API_KEY = os.getenv("MURF_API_KEY", "")
+if not MURF_API_KEY:
+    import warnings
+    warnings.warn(
+        "⚠️  WARNING: MURF_API_KEY not set. "
+        "Specialist voice switching (Day 9 feature) will be disabled. "
+        "Agent will continue in main voice. "
+        "To enable specialist voice: Set MURF_API_KEY in .env.local",
+        UserWarning
+    )
+
 # STT (Speech-to-Text) settings
 STT_MODEL = "nova-3"
 STT_LANGUAGE = "hi"  # Hindi language support
@@ -84,3 +105,16 @@ OUTBOUND_CALL_ENABLED = True
 # Call configuration
 WEATHER_ALERT_CALL_TIMEOUT = 60  # seconds
 WEATHER_ALERT_DEMO_DISTRICT = "Varanasi"
+
+# ========================= SIP CONFIGURATION =========================
+# Import SIP configuration module for outbound calling
+try:
+    from .config.sip_config import SIPConfig, get_sip_config
+    sip_config = get_sip_config  # Function reference for compatibility
+except ImportError:
+    try:
+        from src.config.sip_config import SIPConfig, get_sip_config
+        sip_config = get_sip_config
+    except ImportError:
+        # Will be imported by __init__.py instead
+        pass

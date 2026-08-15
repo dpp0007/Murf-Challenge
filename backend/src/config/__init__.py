@@ -25,6 +25,7 @@ TTS_TEXT_PACING = _config_module.TTS_TEXT_PACING
 CROP_SPECIALIST_TTS_VOICE = _config_module.CROP_SPECIALIST_TTS_VOICE
 CROP_SPECIALIST_TTS_STYLE = _config_module.CROP_SPECIALIST_TTS_STYLE
 CROP_SPECIALIST_TTS_PACING = _config_module.CROP_SPECIALIST_TTS_PACING
+MURF_API_KEY = _config_module.MURF_API_KEY
 STT_MODEL = _config_module.STT_MODEL
 STT_LANGUAGE = _config_module.STT_LANGUAGE
 LLM_MODEL = _config_module.LLM_MODEL
@@ -38,6 +39,9 @@ PROMPT_MODULE = _config_module.PROMPT_MODULE
 OUTBOUND_CALL_ENABLED = _config_module.OUTBOUND_CALL_ENABLED
 WEATHER_ALERT_CALL_TIMEOUT = _config_module.WEATHER_ALERT_CALL_TIMEOUT
 WEATHER_ALERT_DEMO_DISTRICT = _config_module.WEATHER_ALERT_DEMO_DISTRICT
+
+# Import SIP configuration module
+from .sip_config import SIPConfig, get_sip_config
 
 __all__ = [
     "AGENT_NAME",
@@ -53,6 +57,7 @@ __all__ = [
     "CROP_SPECIALIST_TTS_VOICE",
     "CROP_SPECIALIST_TTS_STYLE",
     "CROP_SPECIALIST_TTS_PACING",
+    "MURF_API_KEY",
     "STT_MODEL",
     "STT_LANGUAGE",
     "LLM_MODEL",
@@ -66,4 +71,6 @@ __all__ = [
     "OUTBOUND_CALL_ENABLED",
     "WEATHER_ALERT_CALL_TIMEOUT",
     "WEATHER_ALERT_DEMO_DISTRICT",
+    "SIPConfig",
+    "get_sip_config",
 ]

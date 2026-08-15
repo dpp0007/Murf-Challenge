@@ -55,14 +55,14 @@ export function ConversationPanel({ messages, canSend = false, onSendMessage }: 
   return (
     <aside
       aria-label="Conversation panel"
-      className="glass-panel w-[min(92vw,380px)] sm:w-[380px] xl:w-[380px]
-        h-[430px] sm:h-[430px] xl:h-[430px]
-        rounded-[26px] border border-white/45 bg-white/28 px-4 py-4 sm:px-5 sm:py-5
+      className="w-full
+        rounded-[26px] border border-white/45 bg-white/28 px-5 py-5
         shadow-[0_18px_48px_-30px_rgba(27,94,32,0.3)] backdrop-blur-[20px]
-        animate-soft-in"
+        animate-soft-in flex flex-col h-[520px]"
     >
-      <div className="flex h-full flex-col">
-        <div className="flex items-center justify-between border-b border-white/50 pb-3">
+      {/* Header with green top border */}
+      <div className="flex flex-col pb-3 border-b border-white/50 mb-2">
+        <div className="flex items-center justify-between mb-2">
           <div>
             <div className="text-[17px] font-semibold leading-tight text-[#1B5E20]">
               {t.conversation}
@@ -73,55 +73,57 @@ export function ConversationPanel({ messages, canSend = false, onSendMessage }: 
             </div>
           </div>
         </div>
-
-        <div
-          ref={scrollRef}
-          className="mt-3 flex-1 overflow-y-auto thin-scroll pr-1 space-y-2.5"
-        >
-          {!hasMessages ? (
-            <EmptyConversation t={t} />
-          ) : (
-            <div className="flex flex-col gap-2.5 pb-1">
-              {messages.map((m, idx) => (
-                <MessageBubble key={`${m.id ?? idx}-${idx}`} message={m} t={t} />
-              ))}
-            </div>
-          )}
-        </div>
-
-        <form
-          className="mt-3 border-t border-white/45 pt-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void handleSend();
-          }}
-        >
-          <div className="flex items-end gap-2 rounded-[18px] border border-white/60 bg-white/48 p-2 shadow-[0_8px_24px_-20px_rgba(27,94,32,0.22)] backdrop-blur-md">
-            <textarea
-              ref={inputRef}
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={handleKeyDown}
-              disabled={!canSend || isSending}
-              rows={1}
-              placeholder={t.typeMessagePlaceholder}
-              className="min-h-[42px] max-h-24 flex-1 resize-none border-0 bg-transparent px-1 py-2 text-[13.5px] leading-5 text-[#263238] placeholder:text-[#78909C] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-            />
-            <button
-              type="submit"
-              disabled={isDisabled}
-              aria-label={t.sendMessage}
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#2E7D32] text-white shadow-[0_10px_22px_-12px_rgba(27,94,32,0.35)] transition-all duration-150 hover:bg-[#1B5E20] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
-            >
-              <ArrowUpRight className="h-4.5 w-4.5" strokeWidth={2.4} />
-            </button>
-          </div>
-        </form>
+        {/* Green decorative line at top */}
+        <div className="h-[3px] w-[45%] bg-gradient-to-r from-[#1B5E20] to-[#2E7D32] rounded-full -mx-5 mt-2" />
       </div>
 
-      {/* Hidden AgentChatTranscript so the package state tracking still works.
-          We render its children via the above, but keep the original component attached
-          (without outputting anything heavy) to preserve any internal wiring. */}
+      {/* Messages area */}
+      <div
+        ref={scrollRef}
+        className="mt-2 flex-1 overflow-y-auto thin-scroll pr-2 space-y-2.5"
+      >
+        {!hasMessages ? (
+          <EmptyConversation t={t} />
+        ) : (
+          <div className="flex flex-col gap-2.5 pb-1">
+            {messages.map((m, idx) => (
+              <MessageBubble key={`${m.id ?? idx}-${idx}`} message={m} t={t} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Input area */}
+      <form
+        className="mt-3 border-t border-white/45 pt-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void handleSend();
+        }}
+      >
+        <div className="flex items-end gap-2 rounded-[18px] border border-white/60 bg-white/48 p-2 shadow-[0_8px_24px_-20px_rgba(27,94,32,0.22)] backdrop-blur-md">
+          <textarea
+            ref={inputRef}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={!canSend || isSending}
+            rows={1}
+            placeholder={t.typeMessagePlaceholder}
+            className="min-h-[42px] max-h-24 flex-1 resize-none border-0 bg-transparent px-1 py-2 text-[13.5px] leading-5 text-[#263238] placeholder:text-[#78909C] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+          />
+          <button
+            type="submit"
+            disabled={isDisabled}
+            aria-label={t.sendMessage}
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#2E7D32] text-white shadow-[0_10px_22px_-12px_rgba(27,94,32,0.35)] transition-all duration-150 hover:bg-[#1B5E20] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            <ArrowUpRight className="h-4.5 w-4.5" strokeWidth={2.4} />
+          </button>
+        </div>
+      </form>
+
+      {/* Hidden AgentChatTranscript so the package state tracking still works */}
       <div className="hidden" aria-hidden="true">
         <AgentChatTranscript messages={messages} />
       </div>
@@ -151,7 +153,6 @@ function MessageBubble({
 }) {
   const isUser = !!message.from?.isLocal;
 
-  // Render content; ReceivedMessage has a `message` (string) field per local transcript component
   const rawContent: any = (message as any).message ?? (message as any).content;
   let text = '';
   if (typeof rawContent === 'string') {
@@ -168,14 +169,13 @@ function MessageBubble({
   }
 
   if (!text?.trim()) {
-    // Still building / streaming - show a faint placeholder
     if (!isUser) {
       return (
         <div className="flex flex-col animate-soft-in">
           <span className="text-[11px] font-semibold text-[#1B5E20] mb-1 ml-1">
             {t.agent}
           </span>
-          <div className="msg-agent self-start px-3.5 py-2 rounded-2xl rounded-tl-md">
+          <div className="msg-agent self-start px-3.5 py-2 rounded-2xl rounded-tl-md bg-gray-100">
             <div className="flex gap-1.5 items-center h-4">
               <span className="w-1.5 h-1.5 rounded-full bg-[#2E7D32]/60 animate-bounce" />
               <span
@@ -209,7 +209,7 @@ function MessageBubble({
         className={`max-w-[90%] px-3.5 py-2.5 rounded-2xl
           text-[13.5px] leading-relaxed text-[#263238] whitespace-pre-wrap break-words
           shadow-[0_2px_8px_-4px_rgba(27,94,32,0.15)]
-          ${isUser ? 'msg-user rounded-tr-md' : 'msg-agent rounded-tl-md'}`}
+          ${isUser ? 'msg-user rounded-tr-md bg-green-100/40' : 'msg-agent rounded-tl-md bg-white/45'}`}
       >
         {text}
       </div>

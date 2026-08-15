@@ -9,26 +9,49 @@ export async function GET(request: Request) {
     const path = url.pathname.replace("/api/analytics", "");
     const query = url.search;
 
-    const fullUrl = `http://localhost:8080/api/analytics${path}${query}`;
+    // Use 127.0.0.1 instead of localhost to ensure proper resolution in server context
+    const backendHost = process.env.BACKEND_URL || "http://127.0.0.1:8080";
+    const fullUrl = `${backendHost}/api/analytics${path}${query}`;
+    console.log(`[Analytics Proxy] Fetching from backend: ${fullUrl}`);
 
-    const response = await fetch(fullUrl, {
-      method: "GET",
-      headers: { "Content-Type": "application/json" },
-    });
+    let response;
+    try {
+      response = await fetch(fullUrl, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        signal: AbortSignal.timeout(10000), // 10 second timeout
+      });
+    } catch (fetchError) {
+      console.error("[Analytics Proxy] Fetch error:", fetchError);
+      return NextResponse.json(
+        { error: "Failed to connect to backend", details: String(fetchError) },
+        { status: 503 }
+      );
+    }
 
     if (!response.ok) {
+      const errorBody = await response.text();
+      console.error(`[Analytics Proxy] Backend error: ${response.status}`, errorBody);
       return NextResponse.json(
-        { error: `Backend error: ${response.status}` },
+        { error: `Backend error: ${response.status}`, body: errorBody },
         { status: response.status }
       );
     }
 
     const data = await response.json();
-    return NextResponse.json(data);
+    console.log(`[Analytics Proxy] Data received`);
+    
+    return NextResponse.json(data, {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+      },
+    });
   } catch (error) {
-    console.error("[Analytics Proxy]", error);
+    console.error("[Analytics Proxy] Unexpected error:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: "Analytics proxy error", details: String(error) },
+      { error: "Analytics proxy error", details: errorMessage },
       { status: 500 }
     );
   }

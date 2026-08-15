@@ -5,7 +5,31 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --radius: 0.875rem;
+  --radius: 0.25rem;
+  
+  /* Design System - Primary Colors */
+  --primary-black: #000000;
+  --primary-white: #FFFFFF;
+  --primary-canvas: #FFFFFF;
+  --primary-hairline: #EBEBEB;
+  
+  /* Dark Surfaces */
+  --dark-canvas: #010120;
+  --dark-soft-surface: #26263A;
+  --dark-soft-surface-alt: #313641;
+  
+  /* Typography */
+  --text-body: #999999;
+  --text-dark: #000000;
+  --text-on-dark: #FFFFFF;
+  
+  /* Accent Colors - Brand Palette */
+  --accent-orange: #FC4C02;
+  --accent-magenta: #EF2CC1;
+  --accent-periwinkle: #BDBBFF;
+  --accent-mint: #C8F6F9;
+  
+  /* Legacy Support */
   --background: #F3FAFA;
   --foreground: #263238;
   --card: #FFF8E7;
